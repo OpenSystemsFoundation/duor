@@ -1,0 +1,39 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Closed door" : {
+
+    },
+    "Done" : {
+
+    },
+    "Door" : {
+
+    },
+    "Double-tap to knock. Unfold your phone to open the door." : {
+
+    },
+    "Hinge angle" : {
+
+    },
+    "No hinge detected. Drag to open the door." : {
+
+    },
+    "Oak door, iron hinges" : {
+
+    },
+    "Open %lld degrees" : {
+
+    },
+    "Open door" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Style" : {
+
+    }
+  },
+  "version" : "1.0"
+}

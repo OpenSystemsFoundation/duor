@@ -6,7 +6,11 @@ struct RootView: View {
     @State private var isShowingSettings = false
     @State private var simulatedAngle: Double = 0
     @State private var deviceOrientation = DeviceOrientationMonitor()
-    @AppStorage(DoorStyle.storageKey) private var style: DoorStyle = .oakWithIronHinges
+    @AppStorage(DoorStyle.storageKey) private var style: DoorStyle = .oak
+    @AppStorage(HardwareFinish.storageKey) private var hardware: HardwareFinish = .iron
+    @AppStorage(InsideScene.storageKey) private var scene: InsideScene = .livingRoom
+
+    private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
 
     var body: some View {
         GeometryReader { proxy in
@@ -18,10 +22,10 @@ struct RootView: View {
                 DeviceFixed(quarterTurns: turns) { _, crease in
                     if showsInside {
                         DoorInsideView(
-                            style: style, hingeDegrees: controller.angle, crease: crease,
+                            look: look, hingeDegrees: controller.angle, crease: crease,
                             simulatesSwing: !controller.hasHardwareHinge || Self.isSimulator)
                     } else {
-                        DoorOutsideView(style: style, feedback: controller.feedback, onKnock: controller.knock)
+                        DoorOutsideView(look: look, feedback: controller.feedback, onKnock: controller.knock)
                     }
                 }
                 .transition(.opacity)
@@ -54,7 +58,7 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $isShowingSettings) {
-            SettingsView(style: $style)
+            SettingsView(style: $style, hardware: $hardware, scene: $scene)
         }
         // Paused while Settings is open so browsing doesn't creak.
         .onHingeChange(isEnabled: !isShowingSettings) { _, newContext in
@@ -65,12 +69,20 @@ struct RootView: View {
         .onChange(of: simulatedAngle) { _, degrees in
             controller.simulatedHingeChanged(degrees: degrees)
         }
-        .task(id: style) {
-            controller.apply(style: style)
+        .task(id: look) {
+            controller.apply(sound: look.soundProfile)
         }
         .onAppear {
             deviceOrientation.start()
         }
+        #if DEBUG
+            // UI testing and screenshots: launch with `-showSettings YES`.
+            .task {
+                guard UserDefaults.standard.bool(forKey: "showSettings") else { return }
+                try? await Task.sleep(for: .milliseconds(600))
+                isShowingSettings = true
+            }
+        #endif
     }
 
     /// Which face of the door to draw.

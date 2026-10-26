@@ -5,6 +5,7 @@
 //
 // Compiled together with Duor/Audio/DSP/*.swift (no app or AVFoundation code).
 
+import Accelerate
 import Foundation
 
 let sampleRate: Float = 48_000
@@ -32,8 +33,8 @@ func swing(from start: Float, duration: Float, velocity: @escaping (Float) -> Fl
     return cues
 }
 
-func render(_ name: String, seconds: Float, cues: [Cue]) throws {
-    let synth = DoorSynth(sampleRate: sampleRate, seed: 42)
+func render(_ name: String, seconds: Float, cues: [Cue], profile: SoundProfile = .oak) throws {
+    let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 42)
     let frameCount = Int(seconds * sampleRate)
     var samples = [Float](repeating: 0, count: frameCount)
     var pending = cues.sorted { $0.time < $1.time }[...]
@@ -60,14 +61,48 @@ func render(_ name: String, seconds: Float, cues: [Cue]) throws {
     let peakIndex = samples.firstIndex { abs($0) == peak } ?? 0
     let lastLoud = samples.lastIndex { abs($0) > peak * 0.01 } ?? peakIndex
     let ringTime = Float(lastLoud - peakIndex) / sampleRate
+    let (brightness, speakerLevel) = spectrum(of: samples, from: max(peakIndex - 64, 0))
     print(
         name.padding(toLength: 14, withPad: " ", startingAt: 0),
         String(
-            format: "peak %6.1f dBFS   rms %6.1f dBFS   ring to -40 dB %4.0f ms", decibels(peak), decibels(rms),
-            ringTime * 1000),
+            format: "peak %6.1f dBFS   rms %6.1f dBFS   ring %4.0f ms   centroid %5.0f Hz   above 250 Hz %6.1f dB",
+            decibels(peak), decibels(rms), ringTime * 1000, brightness, decibels(speakerLevel)),
         finite ? "" : "  NON-FINITE SAMPLES")
 
     try writeWAV(samples, to: outputDirectory.appendingPathComponent("\(name).wav"))
+}
+
+/// Spectral centroid (how bright it sounds) and RMS above 250 Hz (what a phone speaker can play)
+/// over the 170 ms after `start`.
+func spectrum(of samples: [Float], from start: Int) -> (centroid: Float, highRMS: Float) {
+    let count = 8192
+    var frame = [Float](repeating: 0, count: count)
+    for index in 0..<min(count, samples.count - start) { frame[index] = samples[start + index] }
+    let fft = vDSP.FFT(log2n: 13, radix: .radix2, ofType: DSPSplitComplex.self)!
+    var real = [Float](repeating: 0, count: count / 2), imaginary = [Float](repeating: 0, count: count / 2)
+    var magnitudes = [Float](repeating: 0, count: count / 2)
+    real.withUnsafeMutableBufferPointer { realPointer in
+        imaginary.withUnsafeMutableBufferPointer { imaginaryPointer in
+            var split = DSPSplitComplex(realp: realPointer.baseAddress!, imagp: imaginaryPointer.baseAddress!)
+            frame.withUnsafeBufferPointer {
+                $0.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: count / 2) {
+                    vDSP_ctoz($0, 2, &split, 1, vDSP_Length(count / 2))
+                }
+            }
+            fft.forward(input: split, output: &split)
+            vDSP.squareMagnitudes(split, result: &magnitudes)
+        }
+    }
+    let binWidth = sampleRate / Float(count)
+    var weighted: Float = 0, total: Float = 0, high: Float = 0
+    for (bin, power) in magnitudes.enumerated().dropFirst() {
+        let frequency = Float(bin) * binWidth
+        weighted += frequency * power
+        total += power
+        if frequency >= 250 { high += power }
+    }
+    let rmsScale = sqrt(Float(count)) * Float(count) / 2
+    return (total > 0 ? weighted / total : 0, sqrt(high * 2) / rmsScale)
 }
 
 func writeWAV(_ samples: [Float], to url: URL) throws {
@@ -121,5 +156,25 @@ try render(
         + [play(.openStop, at: 2.6, volume: 0.6)]
         + swing(from: 3.4, duration: 0.45) { -260 * sin(.pi * $0 / 0.45) }
         + [play(.slam, at: 3.85)])
+
+// Every door type: a knock and the full sequence.
+let doors: [(String, SoundProfile)] = [
+    ("oak", .oak), ("pine", .pine), ("barn", .barn), ("castle", .castle), ("modern", .modern),
+    ("oak-brass", SoundProfile.oak.with(metal: .brass)), ("oak-chrome", SoundProfile.oak.with(metal: .chrome)),
+]
+for (name, profile) in doors {
+    try render("knock-\(name)", seconds: 1.2, cues: [play(.knock, at: 0.05)], profile: profile)
+    try render(
+        "door-\(name)", seconds: 5.5,
+        cues: [
+            play(.knock, at: 0.1, volume: 0.9), play(.knock, at: 0.36),
+            play(.unlatch, at: 1.3),
+        ]
+            + swing(from: 1.35, duration: 1.2) { 140 * sin(.pi * $0 / 1.2) }
+            + [play(.openStop, at: 2.6, volume: 0.6)]
+            + swing(from: 3.4, duration: 0.45) { -260 * sin(.pi * $0 / 0.45) }
+            + [play(.slam, at: 3.85)],
+        profile: profile)
+}
 
 print("Wrote WAV files to \(outputDirectory.path)")

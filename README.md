@@ -6,7 +6,7 @@ A door simulator for the foldable **iPhone Duo**. The phone is the door:
 - **Unfold:** the latch clicks and the door creaks open, following the hinge.
 - **Fold:** the door closes with a click, or slams if you're quick about it.
 
-The MVP is a wooden oak door with iron hinges. See the [solution design](docs/SOLUTION_DESIGN.md).
+Pick from five doors (oak, cottage, barn, castle, modern), five hardware metals, and five scenes behind the door. See the [solution design](docs/SOLUTION_DESIGN.md).
 
 ## Requirements
 
@@ -58,6 +58,7 @@ To audition and tune them on your Mac:
 ```sh
 make sounds                          # renders build/sounds/*.wav and prints levels
 afplay build/sounds/sequence.wav     # knock knock, open, stop, slam
+afplay build/sounds/door-castle.wav  # the same for each door type (oak, pine, barn, castle, modern)
 ```
 
-Tune by editing `SoundProfile.oak` in `Duor/Audio/DSP/SoundProfile.swift`.
+Tune by editing the presets (`oak`, `pine`, `barn`, `castle`, `modern`) and `MetalTone` values in `Duor/Audio/DSP/SoundProfile.swift`.

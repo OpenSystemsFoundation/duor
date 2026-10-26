@@ -2,7 +2,7 @@ import AVFoundation
 import os
 
 protocol DoorSoundPlaying: AnyObject {
-    func apply(style: DoorStyle)
+    func apply(profile: SoundProfile)
     func play(_ sound: DoorSound, volume: Float)
     /// Signed hinge velocity in degrees per second. 0 lets the creak fade out.
     func setCreak(velocity: Double)
@@ -43,8 +43,8 @@ final class DoorAudioEngine: DoorSoundPlaying {
         observeRestarts()
     }
 
-    func apply(style: DoorStyle) {
-        synth.setProfile(style.soundProfile)
+    func apply(profile: SoundProfile) {
+        synth.setProfile(profile)
     }
 
     func play(_ sound: DoorSound, volume: Float) {

@@ -16,6 +16,33 @@ nonisolated struct SoundProfile: Sendable {
     var creak: CreakProfile
     /// Reverb wet level.
     var room: Float
+    /// The door's signature extras.
+    var character = SoundCharacter()
+    /// How a knuckle meets this door.
+    var knockTouch = KnockTouch()
+}
+
+/// How a knock lands: soft or hard knuckle, how much bright snap, how much deep thump.
+nonisolated struct KnockTouch: Sendable {
+    /// Knuckle contact time in seconds. Longer is softer and darker.
+    var contact: ClosedRange<Float> = 0.0008...0.0012
+    /// Level and pitch of the knuckle's own sharp snap on top.
+    var snapLevel: Float = 0.3
+    var snapPitch: Float = 3.2
+    /// A deep thump from the whole door moving in its frame (0 = none). Heavy doors have it.
+    var thump: Float = 0
+}
+
+/// What makes a door type recognizable beyond its wood.
+nonisolated struct SoundCharacter: Sendable {
+    /// Window panes that rattle on knocks and closes (0 = no glass).
+    var glassRattle: Float = 0
+    /// Loose boards that clatter after a hit (0 = solid).
+    var looseBoards: Float = 0
+    /// A big iron bolt instead of a small latch: lower, longer, slower clanks.
+    var heavyBolt = false
+    /// A soft-close damper and magnetic catch: no slams, a soft thud and a click.
+    var softClose = false
 }
 
 extension SoundProfile {
@@ -88,4 +115,129 @@ extension SoundProfile {
         ),
         room: 0.12
     )
+}
+
+// MARK: - Variations
+
+/// How a hardware metal changes the latch, hinges and creak: brass is warmer and rings longer,
+/// polished steel is brighter, bronze and copper are softer.
+nonisolated struct MetalTone: Sendable {
+    var pitch: Float
+    var decay: Float
+
+    static let iron = MetalTone(pitch: 1, decay: 1)
+    static let brass = MetalTone(pitch: 0.86, decay: 1.45)
+    static let chrome = MetalTone(pitch: 1.22, decay: 1.25)
+    static let copper = MetalTone(pitch: 0.8, decay: 0.95)
+    static let bronze = MetalTone(pitch: 0.74, decay: 1.15)
+}
+
+extension SoundProfile {
+    /// Thin window glass: rings bright and long.
+    nonisolated static let glass: ModeSet = [
+        ModeSpec(2100, 0.040, 0.80),
+        ModeSpec(3300, 0.035, 1.00),
+        ModeSpec(4700, 0.030, 0.80),
+        ModeSpec(6100, 0.025, 0.60),
+        ModeSpec(7900, 0.020, 0.40),
+        ModeSpec(9800, 0.015, 0.30),
+    ]
+}
+
+extension InlineArray where Element == ModeSpec {
+    /// The same object, bigger or smaller (pitch) and more or less damped (decay).
+    nonisolated func scaled(pitch: Float, decay: Float = 1, gain: Float = 1) -> Self {
+        var copy = self
+        for index in copy.indices {
+            copy[index].frequency *= pitch
+            copy[index].decay *= decay
+            copy[index].gain *= gain
+        }
+        return copy
+    }
+}
+
+extension SoundProfile {
+    /// This door with different hardware: retunes the latch, hinges and the hinge's squeal.
+    nonisolated func with(metal: MetalTone) -> SoundProfile {
+        var profile = self
+        profile.latch = latch.scaled(pitch: metal.pitch, decay: metal.decay)
+        profile.hinge = hinge.scaled(pitch: metal.pitch, decay: metal.decay)
+        profile.creak.formants = creak.formants.scaled(pitch: metal.pitch.squareRoot())
+        return profile
+    }
+
+    /// A light painted pine door: higher, a little hollower, a lighter creak.
+    nonisolated static let pine: SoundProfile = {
+        var profile = SoundProfile.oak
+        profile.panel = oak.panel.scaled(pitch: 1.3, decay: 1.15)
+        profile.knock = oak.knock.scaled(pitch: 1.25, decay: 1.2)
+        profile.frame = oak.frame.scaled(pitch: 1.2, decay: 0.9)
+        profile.creak.formants = oak.creak.formants.scaled(pitch: 1.15)
+        profile.creak.body = oak.creak.body.scaled(pitch: 1.3)
+        profile.creak.baseRate = 55
+        profile.creak.ratePerDegree = 1.9
+        profile.creak.level = 0.16
+        profile.room = 0.1
+        profile.character.glassRattle = 0.6
+        // A soft knock: painted wood, a rounder knuckle, little snap, barely a rattle.
+        profile.knock = oak.knock.scaled(pitch: 1.08, decay: 1.25, gain: 0.85)
+        profile.knockTouch = KnockTouch(contact: 0.0017...0.0024, snapLevel: 0.07, snapPitch: 2.4)
+        return profile
+    }()
+
+    /// A big weathered barn door: low and woody, a long groaning creak, a wide space.
+    nonisolated static let barn: SoundProfile = {
+        var profile = SoundProfile.oak
+        profile.panel = oak.panel.scaled(pitch: 0.75, decay: 1.4)
+        profile.knock = oak.knock.scaled(pitch: 0.8, decay: 1.3, gain: 1.1)
+        profile.frame = oak.frame.scaled(pitch: 0.8, decay: 1.3)
+        profile.hinge = oak.hinge.scaled(pitch: 0.85, decay: 1.3)
+        profile.creak.formants = oak.creak.formants.scaled(pitch: 0.8)
+        profile.creak.body = oak.creak.body.scaled(pitch: 0.8, decay: 1.4, gain: 1.6)
+        profile.creak.baseRate = 26
+        profile.creak.ratePerDegree = 1.1
+        profile.creak.wander = 0.26
+        profile.creak.jitter = 0.06
+        profile.creak.level = 0.26
+        profile.room = 0.2
+        profile.character.looseBoards = 0.7
+        return profile
+    }()
+
+    /// A massive castle door in a stone hall: deep thuds, slow loud groan, long echo.
+    nonisolated static let castle: SoundProfile = {
+        var profile = SoundProfile.oak
+        profile.panel = oak.panel.scaled(pitch: 0.6, decay: 1.8)
+        // Heavy and dark: a low, slow "thoom" of a massive leaf, almost no snap.
+        profile.knock = oak.knock.scaled(pitch: 0.58, decay: 2, gain: 1.5)
+        profile.frame = oak.frame.scaled(pitch: 0.6, decay: 1.8)
+        profile.hinge = oak.hinge.scaled(pitch: 0.7, decay: 1.6)
+        profile.creak.formants = oak.creak.formants.scaled(pitch: 0.65)
+        profile.creak.body = oak.creak.body.scaled(pitch: 0.65, decay: 1.6, gain: 1.8)
+        profile.creak.baseRate = 18
+        profile.creak.ratePerDegree = 0.8
+        profile.creak.wander = 0.3
+        profile.creak.jitter = 0.07
+        profile.creak.level = 0.3
+        profile.room = 0.32
+        profile.character.heavyBolt = true
+        profile.knockTouch = KnockTouch(contact: 0.0018...0.0024, snapLevel: 0.05, snapPitch: 2, thump: 0.4)
+        return profile
+    }()
+
+    /// A modern solid-core slab on well-oiled hinges: tight, clean, barely a whisper of creak.
+    nonisolated static let modern: SoundProfile = {
+        var profile = SoundProfile.oak
+        profile.panel = oak.panel.scaled(pitch: 1.1, decay: 0.8)
+        profile.knock = oak.knock.scaled(pitch: 1.15, decay: 0.75)
+        profile.frame = oak.frame.scaled(pitch: 1.1, decay: 0.75)
+        profile.creak.formants = oak.creak.formants.scaled(pitch: 1.3)
+        profile.creak.baseRate = 70
+        profile.creak.hiss = 0.04
+        profile.creak.level = 0.05
+        profile.room = 0.08
+        profile.character.softClose = true
+        return profile
+    }()
 }

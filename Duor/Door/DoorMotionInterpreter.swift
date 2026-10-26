@@ -38,6 +38,14 @@ struct DoorMotionInterpreter {
         var slamSpeed: Double = 260
         /// Angle changes smaller than this (degrees) are sensor jitter, not movement.
         var jitterTolerance: Double = 1.5
+        /// The door latches when the hinge reaches this angle (degrees). The system's `.closed`
+        /// status is no use here: it means "too far shut for the inner display" and switches on
+        /// as early as ~85° while folding.
+        var latchAngle: Double = 2
+        /// If the hinge comes to rest at or below this angle without reaching `latchAngle`, it
+        /// latches anyway once it has been still for `stillAfter`. Hinge updates thin out near
+        /// shut (the simulator's last sample can be ~10° while the hinge is really at 5°).
+        var restLatchAngle: Double = 15
         /// Degrees the door must open past the latched angle before it counts as unlatched.
         var unlatchTravel: Double = 3
         /// Degrees the door must swing back from the open stop before it can hit it again.
@@ -56,7 +64,10 @@ struct DoorMotionInterpreter {
     private(set) var velocity: Double = 0
     /// The last position that counted as movement.
     private var anchor: HingeReading?
-    private var isLatched = false
+    /// The latest sample, accepted as movement or not.
+    private var latest: HingeReading?
+    /// Whether the door is shut and latched.
+    private(set) var isLatched = false
     private var latchedAngle: Double = 0
     private var isStopArmed = true
     private var stopAngle: Double = 180
@@ -69,13 +80,15 @@ struct DoorMotionInterpreter {
         guard let anchor else {
             // The first sample is the starting state, not a movement.
             self.anchor = reading
-            isLatched = reading.status == .closed
+            latest = reading
+            isLatched = reading.degrees <= configuration.latchAngle
             latchedAngle = reading.degrees
             isStopArmed = reading.status != .fullyOpen
             stopAngle = reading.degrees
             return []
         }
 
+        latest = reading
         // Motion, measured from the last accepted position.
         var instant: Double = 0
         let moved = reading.degrees - anchor.degrees
@@ -93,11 +106,11 @@ struct DoorMotionInterpreter {
         let impactSpeed = max(abs(instant), abs(velocity))
 
         var events: [DoorEvent] = []
-        if isLatched, reading.status != .closed, reading.degrees - latchedAngle >= configuration.unlatchTravel {
+        if isLatched, reading.degrees - latchedAngle >= configuration.unlatchTravel {
             isLatched = false
             events.append(.unlatched)
         }
-        if !isLatched, reading.status != .closed, instant != 0, abs(velocity) >= configuration.creakThreshold {
+        if !isLatched, instant != 0, abs(velocity) >= configuration.creakThreshold {
             events.append(.swing(velocity: velocity))
         }
         if !isStopArmed, reading.degrees <= stopAngle - configuration.stopRearmTravel {
@@ -108,15 +121,29 @@ struct DoorMotionInterpreter {
             stopAngle = reading.degrees
             events.append(.hitOpenStop(speed: impactSpeed))
         }
-        if reading.status == .closed {
+        if reading.degrees <= configuration.latchAngle {
             if !isLatched {
-                isLatched = true
-                events.append(.closed(classifyClose(speed: impactSpeed)))
-                velocity = 0
+                events.append(latch(at: reading.degrees, speed: impactSpeed))
             }
-            latchedAngle = reading.degrees
+            latchedAngle = min(latchedAngle, reading.degrees)
         }
         return events
+    }
+
+    /// Called when no samples have arrived for a while. Latches a door that has come to rest
+    /// almost shut but never reported a fully closed angle.
+    mutating func settle(at time: TimeInterval) -> [DoorEvent] {
+        guard !isLatched, let latest, latest.status == .closed, latest.degrees <= configuration.restLatchAngle,
+            time - latest.timestamp >= configuration.stillAfter
+        else { return [] }
+        return [latch(at: latest.degrees, speed: abs(velocity))]
+    }
+
+    private mutating func latch(at degrees: Double, speed: Double) -> DoorEvent {
+        isLatched = true
+        latchedAngle = degrees
+        velocity = 0
+        return .closed(classifyClose(speed: speed))
     }
 
     func classifyClose(speed: Double) -> CloseKind {

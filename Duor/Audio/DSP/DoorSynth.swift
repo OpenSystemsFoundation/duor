@@ -151,45 +151,94 @@ private nonisolated struct SynthCore: Sendable {
     }
 
     // MARK: Recipes. Each sound is one or more strikes on the door's materials.
+    // A door's `character` adds its signature on top: rattling glass, loose boards,
+    // a heavy iron bolt, or a soft-close damper.
 
     /// A knuckle on solid wood: a short, heavily damped "tok" plus the knuckle's own sharp snap.
     /// Mostly dry, so it sounds close and tight rather than boomy.
     private mutating func knock(_ volume: Float) {
         let pitch = random.value(in: 0.97...1.03)
+        let touch = profile.knockTouch
         strike(
             ImpactSpec(
-                modes: profile.knock, contactTime: random.value(in: 0.0008...0.0012),
+                modes: profile.knock, contactTime: random.value(in: touch.contact),
                 amplitude: 0.9 * volume, roughness: 0.2, detune: 0.03, pitchScale: pitch,
-                reverbSend: 0.3))
+                reverbSend: 0.3 + profile.room))
         strike(
             ImpactSpec(
-                modes: profile.knock, contactTime: 0.0002, amplitude: 0.3 * volume,
-                roughness: 0.9, pitchScale: 3.2 * pitch, decayScale: 0.3, reverbSend: 0.15))
+                modes: profile.knock, contactTime: 0.0002, amplitude: touch.snapLevel * volume,
+                roughness: 0.9, pitchScale: touch.snapPitch * pitch, decayScale: 0.3, reverbSend: 0.15))
+        if touch.thump > 0 {
+            strike(
+                ImpactSpec(
+                    modes: profile.frame, contactTime: 0.006, amplitude: touch.thump * volume, roughness: 0.1,
+                    decayScale: 0.7, reverbSend: 0.6))
+        }
+        rattleGlass(profile.character.glassRattle * 0.12 * volume, after: 0.006)
+        clatterBoards(profile.character.looseBoards * 0.4 * volume, after: 0.006, count: 2)
     }
 
-    /// Handle turns, bolt slides out of the strike plate: two small metal clicks.
+    /// Handle turns, bolt slides out of the strike plate.
     private mutating func unlatch(_ volume: Float) {
+        if profile.character.heavyBolt {
+            // A big iron bolt dragged back: a low clank, a scrape, a second clank.
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0.0006, amplitude: 0.5 * volume, pitchScale: 0.5, decayScale: 3))
+            strike(
+                ImpactSpec(
+                    modes: profile.hinge, contactTime: 0.03, amplitude: 0.12 * volume, roughness: 1, delay: 0.02,
+                    pitchScale: 0.9, decayScale: 0.5))
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0.0005, amplitude: 0.4 * volume,
+                    delay: random.value(in: 0.07...0.09), pitchScale: 0.45, decayScale: 3))
+            return
+        }
         strike(ImpactSpec(modes: profile.latch, contactTime: 0.0002, amplitude: 0.35 * volume))
         strike(
             ImpactSpec(
                 modes: profile.latch, contactTime: 0.0003, amplitude: 0.25 * volume,
                 delay: random.value(in: 0.018...0.03), pitchScale: 0.85))
         strike(ImpactSpec(modes: profile.panel, contactTime: 0.002, amplitude: 0.15 * volume))
+        rattleGlass(profile.character.glassRattle * 0.12 * volume, after: 0.01)
     }
 
     /// Door meets the frame, bolt rides the strike plate, then snaps into place.
     private mutating func latch(_ volume: Float) {
+        if profile.character.softClose {
+            // The damper takes the speed out; a magnet catches the door.
+            strike(ImpactSpec(modes: profile.frame, contactTime: 0.014, amplitude: 0.5 * volume, roughness: 0.05))
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0.00015, amplitude: 0.35 * volume, delay: 0.02,
+                    pitchScale: 1.35, decayScale: 0.5))
+            return
+        }
         strike(ImpactSpec(modes: profile.frame, contactTime: 0.004, amplitude: 0.55 * volume * volume))
         strike(ImpactSpec(modes: profile.panel, contactTime: 0.003, amplitude: 0.35 * volume))
-        strike(ImpactSpec(modes: profile.latch, contactTime: 0.00025, amplitude: 0.3 * volume))
+        let boltPitch: Float = profile.character.heavyBolt ? 0.5 : 1
+        let boltDecay: Float = profile.character.heavyBolt ? 3 : 1
+        strike(
+            ImpactSpec(
+                modes: profile.latch, contactTime: 0.00025, amplitude: 0.3 * volume, pitchScale: boltPitch,
+                decayScale: boltDecay))
         strike(
             ImpactSpec(
                 modes: profile.latch, contactTime: 0.0002, amplitude: 0.5 * volume,
-                delay: random.value(in: 0.028...0.045), pitchScale: 1.08))
+                delay: random.value(in: 0.028...0.045) * (profile.character.heavyBolt ? 2 : 1),
+                pitchScale: 1.08 * boltPitch, decayScale: boltDecay))
+        rattleGlass(profile.character.glassRattle * 0.4 * volume, after: 0.006)
+        clatterBoards(profile.character.looseBoards * 0.35 * volume, after: 0.01, count: 2)
     }
 
     /// Heavy hit into the frame, the latch, then the hinges rattling down.
     private mutating func slam(_ volume: Float) {
+        if profile.character.softClose {
+            // A soft-close door can't slam: it just closes a little firmer.
+            latch(min(volume, 1))
+            return
+        }
         strike(
             ImpactSpec(
                 modes: profile.frame, contactTime: 0.006, amplitude: volume,
@@ -198,7 +247,11 @@ private nonisolated struct SynthCore: Sendable {
             ImpactSpec(
                 modes: profile.panel, contactTime: 0.004, amplitude: 0.7 * volume,
                 detune: 0.05, decayScale: 1.3))
-        strike(ImpactSpec(modes: profile.latch, contactTime: 0.0002, amplitude: 0.45 * volume, delay: 0.008))
+        let heavy = profile.character.heavyBolt
+        strike(
+            ImpactSpec(
+                modes: profile.latch, contactTime: 0.0002, amplitude: 0.45 * volume, delay: 0.008,
+                pitchScale: heavy ? 0.5 : 1, decayScale: heavy ? 3 : 1))
         var time: Float = 0.03
         var level: Float = 0.25
         for _ in 0..<4 {
@@ -209,6 +262,8 @@ private nonisolated struct SynthCore: Sendable {
             time += random.value(in: 0.02...0.045)
             level *= 0.6
         }
+        rattleGlass(profile.character.glassRattle * volume, after: 0.01)
+        clatterBoards(profile.character.looseBoards * volume, after: 0.015, count: 5)
     }
 
     /// Door swings into a rubber stop: dull thud and a small hinge tick.
@@ -217,6 +272,38 @@ private nonisolated struct SynthCore: Sendable {
             ImpactSpec(
                 modes: profile.panel, contactTime: 0.008, amplitude: 1.6 * volume, roughness: 0.1, decayScale: 0.8))
         strike(ImpactSpec(modes: profile.hinge, contactTime: 0.0005, amplitude: 0.12 * volume, delay: 0.035))
+        rattleGlass(profile.character.glassRattle * 0.3 * volume, after: 0.01)
+        clatterBoards(profile.character.looseBoards * 0.3 * volume, after: 0.012, count: 2)
+    }
+
+    /// Window panes buzzing in their frame: quick, fading glass ticks.
+    private mutating func rattleGlass(_ level: Float, after delay: Float) {
+        guard level > 0.001 else { return }
+        var time = delay
+        var amplitude = level
+        for _ in 0..<5 {
+            strike(
+                ImpactSpec(
+                    modes: SoundProfile.glass, contactTime: 0.00015, amplitude: amplitude * 0.5, roughness: 0.6,
+                    delay: time, detune: 0.02, pitchScale: random.value(in: 0.97...1.03), reverbSend: 0.5))
+            time += random.value(in: 0.012...0.03)
+            amplitude *= 0.62
+        }
+    }
+
+    /// Loose planks knocking against each other after a hit.
+    private mutating func clatterBoards(_ level: Float, after delay: Float, count: Int) {
+        guard level > 0.001 else { return }
+        var time = delay
+        var amplitude = level
+        for _ in 0..<count {
+            strike(
+                ImpactSpec(
+                    modes: profile.knock, contactTime: 0.0012, amplitude: amplitude * 0.7, roughness: 0.5,
+                    delay: time, pitchScale: random.value(in: 1.5...2.2), decayScale: 0.6))
+            time += random.value(in: 0.025...0.06)
+            amplitude *= 0.6
+        }
     }
 
     /// Starts an impact on a free voice, or steals the one closest to finishing.

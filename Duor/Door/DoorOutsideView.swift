@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The outside face of the door, shown on the cover display while folded. Tap to knock.
 struct DoorOutsideView: View {
-    let style: DoorStyle
+    let look: DoorLook
     /// Latest door feedback, for the knock and close shakes.
     let feedback: DoorFeedback?
     let onKnock: () -> Void
@@ -10,7 +10,7 @@ struct DoorOutsideView: View {
     @State private var dents: [KnockDent] = []
 
     var body: some View {
-        DoorLeafArt(palette: style.palette, hingeSide: .leading)
+        DoorLeafArt(look: look, hingeSide: .leading, face: .outside)
             .overlay {
                 ForEach(dents) { dent in
                     KnockDentView()
@@ -99,5 +99,5 @@ private struct KnockDentView: View {
 }
 
 #Preview {
-    DoorOutsideView(style: .oakWithIronHinges, feedback: nil, onKnock: {})
+    DoorOutsideView(look: DoorLook(style: .barn, hardware: .iron, scene: .forest), feedback: nil, onKnock: {})
 }

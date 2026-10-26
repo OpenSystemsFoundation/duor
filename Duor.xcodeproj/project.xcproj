@@ -32,6 +32,8 @@
             { "path": "DoorStyle.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorArt.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorwayArt.swift", "target-membership": [ "Duor/compile-sources" ] },
+            { "path": "InsideScenes.swift", "target-membership": [ "Duor/compile-sources" ] },
+            { "path": "SceneLife.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorOutsideView.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorInsideView.swift", "target-membership": [ "Duor/compile-sources" ] },
           ],
@@ -115,6 +117,7 @@
         "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
         "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
         "INFOPLIST_KEY_UISupportedInterfaceOrientations": "UIInterfaceOrientationPortrait",
+        "INFOPLIST_KEY_UIRequiresFullScreen": "YES",
         "LD_RUNPATH_SEARCH_PATHS": [
           "$(inherited)",
           "@executable_path/Frameworks",

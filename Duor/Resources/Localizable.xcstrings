@@ -1,7 +1,37 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Barn" : {
+
+    },
+    "Beach" : {
+
+    },
+    "Behind the door" : {
+
+    },
+    "Brass" : {
+
+    },
+    "Brick wall" : {
+
+    },
+    "Bronze" : {
+
+    },
+    "Castle" : {
+
+    },
+    "Chrome" : {
+
+    },
     "Closed door" : {
+
+    },
+    "Copper" : {
+
+    },
+    "Cottage" : {
 
     },
     "Done" : {
@@ -13,13 +43,37 @@
     "Double-tap to knock. Unfold your phone to open the door." : {
 
     },
+    "Forest" : {
+
+    },
+    "Great hall" : {
+
+    },
+    "Hardware" : {
+
+    },
     "Hinge angle" : {
+
+    },
+    "Hinges, handle and latch. Each metal sounds a little different, too." : {
+
+    },
+    "Iron" : {
+
+    },
+    "Living room" : {
+
+    },
+    "Modern" : {
+
+    },
+    "Nice try." : {
 
     },
     "No hinge detected. Drag to open the door." : {
 
     },
-    "Oak door, iron hinges" : {
+    "Oak" : {
 
     },
     "Open %lld degrees" : {
@@ -28,10 +82,10 @@
     "Open door" : {
 
     },
-    "Settings" : {
+    "Outer space" : {
 
     },
-    "Style" : {
+    "Settings" : {
 
     }
   },

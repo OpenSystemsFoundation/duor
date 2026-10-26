@@ -2,22 +2,26 @@ import SwiftUI
 
 /// The inner display while the phone is open.
 ///
-/// On a real iPhone Duo the phone half that swings open *is* the door leaf, so its screen shows the
-/// leaf's inside face and stays still: the physical motion does the animating. Where nothing moves
-/// physically (the Simulator, phones without a hinge), the leaf swings on screen at the true angle.
-/// The fixed half shows the doorway and the room beyond, which lights up as the door opens.
-/// The hinges sit on the crease.
+/// The fixed half shows the doorway and the scene beyond, which lights up as the door opens.
+/// The hinges sit on the crease. The leaf has weight: it follows the hinge on a spring, so it
+/// lags a little, bounces off the stop, and swings open from shut when the view appears.
+///
+/// On a real iPhone Duo the phone half that swings open *is* the door leaf, so only that lag and
+/// bounce are drawn on top of the physical motion. Where nothing moves physically (the Simulator,
+/// phones without a hinge) the whole swing is drawn.
 struct DoorInsideView: View {
-    let style: DoorStyle
+    let look: DoorLook
     /// Physical hinge angle: 0 folded, 180 flat.
     let hingeDegrees: Double
     /// The fold crease in this view's coordinates, if the system reports one.
     var crease: CGRect?
-    /// Swing the leaf on screen because nothing swings physically.
+    /// Draw the whole swing because nothing swings physically.
     var simulatesSwing = false
 
+    @State private var hasSwungIn = false
+
     private var openness: Double { min(max(hingeDegrees / 180, 0), 1) }
-    /// How lit the room is: dark when just cracked open, fully lit from about two-thirds open.
+    /// How lit the scene is: dark when just cracked open, fully lit from about two-thirds open.
     private var light: Double {
         let t = min(max((openness - 0.06) / 0.6, 0), 1)
         return t * t * (3 - 2 * t)
@@ -30,39 +34,80 @@ struct DoorInsideView: View {
                 // The crease, when the system reserves one, is the shadowed gap between door and frame.
                 Color(red: 0.1, green: 0.07, blue: 0.05)
 
-                DoorwayArt(palette: style.palette, light: light)
+                DoorwayArt(look: look, light: light)
                     .frame(width: split.doorway.width, height: split.doorway.height)
                     .offset(x: split.doorway.minX, y: split.doorway.minY)
+                    .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: hingeDegrees)
 
-                leaf
-                    .frame(width: split.leaf.width, height: split.leaf.height)
-                    .offset(x: split.leaf.minX, y: split.leaf.minY)
+                SwingingLeaf(
+                    look: look, light: light, physicalDegrees: hingeDegrees,
+                    drawnDegrees: hasSwungIn ? hingeDegrees : 0, simulatesSwing: simulatesSwing
+                )
+                .frame(width: split.leaf.width, height: split.leaf.height)
+                .offset(x: split.leaf.minX, y: split.leaf.minY)
+                // Weight: a slightly bouncy spring, retargeted smoothly by every hinge update.
+                .animation(.spring(response: 0.42, dampingFraction: 0.58), value: hingeDegrees)
 
-                HingeBarrels(palette: style.palette, split: split)
+                HingeBarrels(palette: look.palette, split: split)
                     .allowsHitTesting(false)
             }
-            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: hingeDegrees)
         }
         .ignoresSafeArea()
         // The door is physical: never mirror it for right-to-left languages.
         .environment(\.layoutDirection, .leftToRight)
+        .onAppear {
+            withAnimation(.spring(response: 0.75, dampingFraction: 0.6)) {
+                hasSwungIn = true
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Open door"))
         .accessibilityValue(Text("Open \(Int(hingeDegrees)) degrees"))
     }
+}
 
-    /// The inside face of the leaf: shaded near the hinge while barely open, lit by the room once open.
-    private var leaf: some View {
-        DoorLeafArt(palette: style.palette, hingeSide: .trailing, showsPeephole: false)
-            .overlay {
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.55 * (1 - light))], startPoint: .leading, endPoint: .trailing)
-            }
-            .overlay { Color.black.opacity(0.3 * (1 - light)) }
-            // The leaf stands at (180° − hinge angle) to the doorway: edge-on at 90°, flat at 180°.
-            .rotation3DEffect(
-                .degrees(simulatesSwing ? 180 - hingeDegrees : 0), axis: (x: 0, y: 1, z: 0), anchor: .trailing,
-                perspective: 0.4)
+/// The door leaf, rotated about its hinge edge to wherever the spring has carried it.
+private struct SwingingLeaf: View, Animatable {
+    let look: DoorLook
+    let light: Double
+    /// Where the phone half physically is.
+    let physicalDegrees: Double
+    /// Where the drawn door is: follows the physical angle with weight. Animated.
+    var drawnDegrees: Double
+    let simulatesSwing: Bool
+
+    var animatableData: Double {
+        get { drawnDegrees }
+        set { drawnDegrees = newValue }
+    }
+
+    /// Degrees the leaf turns away from its own half of the screen, about the hinge edge.
+    private var rotation: Double {
+        // Without physical motion the leaf stands at (180° − angle) to the doorway:
+        // across the doorway when shut, edge-on at 90°, flat at 180°.
+        if simulatesSwing { return 180 - drawnDegrees }
+        // On a real Duo the screen half already stands at the physical angle: draw only the lag.
+        return min(max(physicalDegrees - drawnDegrees, -30), 85)
+    }
+
+    var body: some View {
+        // Past 90° we see the other side of the door: its outside face, in the shadow of the frame.
+        let showsOutside = rotation > 90
+        ZStack {
+            DoorLeafArt(look: look, hingeSide: .trailing, face: .inside)
+                .overlay {
+                    LinearGradient(
+                        colors: [.clear, .black.opacity(0.55 * (1 - light))], startPoint: .leading,
+                        endPoint: .trailing)
+                }
+                .overlay { Color.black.opacity(0.3 * (1 - light)) }
+                .opacity(showsOutside ? 0 : 1)
+            DoorLeafArt(look: look, hingeSide: .trailing, face: .outside)
+                .overlay { Color.black.opacity(0.3) }
+                .opacity(showsOutside ? 1 : 0)
+        }
+        .rotation3DEffect(
+            .degrees(rotation), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.4)
     }
 }
 
@@ -99,23 +144,24 @@ private struct HingeBarrels: View {
                     let strap = CGRect(
                         x: split.leaf.maxX - strapOverlap, y: y - height * 0.4,
                         width: split.doorway.minX - split.leaf.maxX + strapOverlap * 2, height: height * 0.8)
-                    MetalPainter.plate(in: &context, rect: strap, metal: palette.metal, screws: false)
+                    MetalPainter.plate(in: &context, rect: strap, palette: palette, screws: false)
                 }
                 MetalPainter.barrel(
                     in: &context,
                     rect: CGRect(
                         x: split.creaseX - barrelWidth / 2, y: y - height * 0.55, width: barrelWidth,
                         height: height * 1.1),
-                    metal: palette.metal)
+                    palette: palette)
             }
         }
     }
 }
 
 #Preview("Half open") {
-    DoorInsideView(style: .oakWithIronHinges, hingeDegrees: 130, simulatesSwing: true)
+    DoorInsideView(
+        look: DoorLook(style: .cottage, hardware: .brass, scene: .beach), hingeDegrees: 130, simulatesSwing: true)
 }
 
 #Preview("Flat") {
-    DoorInsideView(style: .oakWithIronHinges, hingeDegrees: 180)
+    DoorInsideView(look: DoorLook(style: .castle, hardware: .bronze, scene: .space), hingeDegrees: 180)
 }

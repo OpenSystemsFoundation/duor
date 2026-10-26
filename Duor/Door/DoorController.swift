@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// Something the user should feel (haptics) or see (a shake), with an id so repeats still trigger.
 struct DoorFeedback: Equatable {
@@ -24,20 +25,24 @@ final class DoorController {
     /// The latest thing to feel or see. Views use it as a trigger for haptics and animations.
     private(set) var feedback: DoorFeedback?
 
-    var isClosed: Bool { (reading?.status ?? .closed) == .closed }
+    /// Shut and latched. Decided by the hinge angle, not the system's hinge status.
+    private(set) var isClosed = true
     var angle: Double { reading?.degrees ?? 0 }
 
     @ObservationIgnored private var interpreter = DoorMotionInterpreter()
     @ObservationIgnored private let sounds: any DoorSoundPlaying
     @ObservationIgnored private var creakFadeTask: Task<Void, Never>?
+    @ObservationIgnored private var settleTask: Task<Void, Never>?
     @ObservationIgnored private var feedbackCount = 0
+
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Duor", category: "hinge")
 
     init(sounds: any DoorSoundPlaying = DoorAudioEngine()) {
         self.sounds = sounds
     }
 
-    func apply(style: DoorStyle) {
-        sounds.apply(style: style)
+    func apply(sound profile: SoundProfile) {
+        sounds.apply(profile: profile)
     }
 
     /// Input from `onHingeChange`. A nil reading means this device has no hinge.
@@ -60,13 +65,36 @@ final class DoorController {
     }
 
     private func ingest(_ reading: HingeReading) {
+        Self.logger.debug(
+            "hinge \(reading.degrees, format: .fixed(precision: 1))° \(String(describing: reading.status))")
         self.reading = reading
         for event in interpreter.ingest(reading) {
             handle(event)
         }
+        isClosed = interpreter.isLatched
+        scheduleSettle()
+    }
+
+    /// Hinge samples stop when the hinge stops. If it stopped almost shut, give the interpreter a
+    /// chance to latch it after a moment of stillness.
+    private func scheduleSettle() {
+        settleTask?.cancel()
+        guard !interpreter.isLatched else { return }
+        settleTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled, let self else { return }
+            for event in interpreter.settle(at: ProcessInfo.processInfo.systemUptime) {
+                handle(event)
+            }
+            isClosed = interpreter.isLatched
+        }
     }
 
     private func handle(_ event: DoorEvent) {
+        if case .swing = event {
+        } else {
+            Self.logger.debug("event \(String(describing: event)) at \(self.angle, format: .fixed(precision: 1))°")
+        }
         switch event {
         case .unlatched:
             sounds.play(.unlatch, volume: 1)

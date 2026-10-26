@@ -89,4 +89,34 @@ struct DoorSynthTests {
         #expect(samples.allSatisfy { $0.isFinite })
         #expect(peak(samples) <= 1)
     }
+
+    @Test(arguments: ["oak", "pine", "barn", "castle", "modern"])
+    func everyDoorSoundsCleanly(_ door: String) {
+        let profiles: [String: SoundProfile] = [
+            "oak": .oak, "pine": .pine, "barn": .barn, "castle": .castle, "modern": .modern,
+        ]
+        for sound in DoorSound.allCases {
+            let synth = DoorSynth(sampleRate: sampleRate, profile: profiles[door]!.with(metal: .brass), seed: 9)
+            synth.play(sound, volume: 1)
+            let samples = render(synth, seconds: 3.5)
+            #expect(samples.allSatisfy { $0.isFinite }, "\(door) \(sound)")
+            #expect(peak(samples) > 0.05, "\(door) \(sound) too quiet")
+            #expect(peak(samples) <= 1, "\(door) \(sound)")
+            #expect(peak(samples.suffix(Int(0.3 * sampleRate))) < 0.002, "\(door) \(sound) still ringing")
+        }
+    }
+
+    @Test func doorsSoundDifferent() {
+        func knock(_ profile: SoundProfile) -> [Float] {
+            let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 1)
+            synth.play(.knock)
+            return render(synth, seconds: 0.3)
+        }
+        let knocks = [SoundProfile.oak, .pine, .barn, .castle, .modern].map(knock)
+        for (index, first) in knocks.enumerated() {
+            for second in knocks[(index + 1)...] {
+                #expect(first != second)
+            }
+        }
+    }
 }

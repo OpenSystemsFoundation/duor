@@ -115,4 +115,34 @@ struct DoorMotionInterpreterTests {
         #expect(first.contains(where: isStop))
         #expect(second.contains(where: isStop))
     }
+
+    @Test func systemClosedStatusDoesNotLatchEarly() {
+        // While folding, the system reports `.closed` from ~85°. Only the angle should latch.
+        var interpreter = DoorMotionInterpreter()
+        _ = interpreter.ingest(HingeReading(degrees: 100, status: .partiallyOpen, timestamp: 0))
+        var early: [DoorEvent] = []
+        for (index, degrees) in [84.0, 60, 30, 10, 4].enumerated() {
+            early += interpreter.ingest(
+                HingeReading(degrees: degrees, status: .closed, timestamp: Double(index + 1) * 0.05))
+        }
+        let shut = interpreter.ingest(HingeReading(degrees: 0, status: .closed, timestamp: 0.3))
+        #expect(!early.contains { if case .closed = $0 { true } else { false } })
+        #expect(shut.contains { if case .closed = $0 { true } else { false } })
+    }
+
+    @Test func restingAlmostShutLatchesAfterAMoment() {
+        var interpreter = DoorMotionInterpreter()
+        _ = interpreter.ingest(reading(30, at: 0))
+        // Updates thin out near shut: the last sample says 5°, and the system already says closed.
+        _ = interpreter.ingest(HingeReading(degrees: 5, status: .closed, timestamp: 0.2))
+        #expect(interpreter.settle(at: 0.3).isEmpty)
+        #expect(interpreter.settle(at: 0.6).count == 1)
+        #expect(interpreter.isLatched)
+    }
+
+    @Test func restingHalfOpenNeverLatches() {
+        var interpreter = DoorMotionInterpreter()
+        _ = interpreter.ingest(reading(30, at: 0))
+        #expect(interpreter.settle(at: 5).isEmpty)
+    }
 }

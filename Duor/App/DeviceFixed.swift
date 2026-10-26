@@ -4,9 +4,11 @@ import UIKit
 /// Lays content out in the device's own portrait frame and counter-rotates it when the system
 /// rotates the interface, so the door stays fixed to the hardware.
 ///
-/// The app asks for portrait only, but on the iPhone Duo's inner display the system may rotate
-/// the interface anyway (resizable scenes ignore orientation locks). The hinge is physical, so
-/// the door must not turn with the interface.
+/// The app asks for portrait only, but on the iPhone Duo's inner display the system rotates the
+/// interface anyway. The hinge is physical, so the door must not turn with the interface.
+/// `UIRequiresFullScreen` (Info.plist) stops the system from animating that rotation: without it
+/// the whole window visibly spins through 90° and back. It's deprecated since iOS 26; if a future
+/// iOS ignores it, the spin returns but the door still ends up in the right place.
 struct DeviceFixed<Content: View>: View {
     /// Clockwise quarter turns that undo the interface rotation. See `DeviceFixedTurns`.
     let quarterTurns: Int

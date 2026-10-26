@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.4 — 26 Oct 2026 (synthesized audio, door UX v2, device-fixed door) |
+| **Status** | Draft v0.5 — 26 Oct 2026 (five doors, five metals, five scenes, animated leaf) |
 | **Platform** | iOS 27.1+, iPhone Duo (graceful fallback on other iPhones) |
 | **Stack** | Swift 6, SwiftUI, AVAudioEngine + hand-rolled DSP (no samples), Swift Testing |
 | **MVP** | One door: oak with iron hinges |
@@ -154,12 +154,22 @@ Knocking is only enabled while closed (you knock on a closed door).
 
 ### 4.3 Settings
 
-A gear button (top trailing; vertical toolbar when unfolded) opens a sheet:
+A gear button opens a sheet with three picture pickers. Choices persist with `@AppStorage` and combine into one `DoorLook` (style + hardware + scene) that drives both the art and the synth.
 
-- **Door style**: MVP has one. Later: grid of thumbnails.
-- *(Later)* Wood finish / paint colour, hinge finish (iron, brass, chrome), knob vs. lever vs. knocker, sound on/off per event, haptics on/off, "slam sensitivity".
+| Setting | Options | Notes |
+|---|---|---|
+| **Door** | Oak, Cottage, Barn, Castle, Modern | Picking a door resets the hardware to the door's own metal. |
+| **Hardware** | Iron, Brass, Chrome, Copper, Bronze | Colors and shine of hinges, handle, studs and strike plate, *and* the pitch and ring of the latch and hinges. |
+| **Behind the door** | Living room, Beach, Forest, Outer space, Brick wall | The brick wall has a note: "Nice try." |
 
-Hinge updates are paused (`isEnabled: false`) while the sheet is open so no creaks play while browsing settings.
+Hinge updates are paused (`isEnabled: false`) while the sheet is open, so browsing doesn't creak. Debug builds open the sheet on launch with `-showSettings YES` (for screenshots and UI tests); all three settings can also be passed as launch arguments, e.g. `-doorStyle castle -hardware bronze -insideScene space`.
+
+### 4.4 The animated leaf
+
+The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`SwingingLeaf`, an `Animatable` view), so it lags a touch behind a fast fold and bounces off the stop. When the inside view appears, the leaf swings open from shut. Past 90° of on-screen rotation it shows its outside face, as a real door would.
+
+- **Simulator and phones without a hinge:** the whole swing is drawn: the leaf stands at (180° − spring angle) to the doorway.
+- **Real Duo:** the screen half already stands at the physical angle, so only the spring's lag is drawn (physical − spring, clamped), never the full swing twice.
 
 ---
 
@@ -280,7 +290,29 @@ Mode frequencies are chosen for a **phone speaker**, which reproduces little bel
 
 Because the hardware range is undocumented, record the angle at the `closed → partiallyOpen` transition (`θ₀`) and at `→ fullyOpen` (`θ₁`) and map the leaf's visual rotation over `[θ₀, θ₁]`. The MVP uses the simple `0…180 → 0…100°` mapping until device data is available.
 
-### 6.6 Ideas for later
+### 6.6 Door types and metals
+
+Each door type is a `SoundProfile` preset (its wood, frame, creak and room) plus a `SoundCharacter`, the signature that makes it recognizable. The hardware metal then retunes the latch, hinges and hinge squeal (`SoundProfile.with(metal:)`).
+
+| Door | Wood and room | Signature |
+|---|---|---|
+| Oak | Solid oak (the reference), small hallway | — |
+| Cottage | Painted pine: higher, a little hollower, lighter creak | **Glass panes rattle** on knocks, latches and slams |
+| Barn | Big weathered boards: low, long groaning creak, wide space | **Loose boards clatter** after hits |
+| Castle | Massive oak, very low, slow loud groan, stone-hall echo | **Heavy iron bolt**: low, long clanks, a scrape when drawn |
+| Modern | Solid-core slab, tight and clean, barely any creak | **Soft-close damper**: can't slam, closes with a soft thud and a magnetic click |
+
+| Metal | Latch and hinges |
+|---|---|
+| Iron | Reference: dull clack |
+| Brass | Lower (×0.86), rings longer (×1.45) |
+| Chrome | Brighter (×1.22), rings longer (×1.25) |
+| Copper | Lower and softer (×0.8, ×0.95) |
+| Bronze | Lowest (×0.74), slightly longer (×1.15) |
+
+`make sounds` renders `door-<type>.wav` for every door (knock knock, open, stop, slam) plus oak with brass and chrome.
+
+### 6.7 Ideas for later
 
 - Per-style extras: a dedicated door-knocker voice (metal ring), chain rattle, fridge-seal "thwup" (filtered noise burst with a pitch drop), airlock hiss.
 - Spatialisation on headphones (knock appears to come from "behind" the door).
@@ -288,32 +320,23 @@ Because the hardware range is undocumented, record the angle at the `closed → 
 
 ## 7. Door styles (extensibility)
 
-A style is: **palette / artwork + `SoundProfile` + motion profile** (thresholds, max swing). Adding one should touch only `DoorStyle`, its artwork and its `SoundProfile` numbers.
+A door type is a case in `DoorStyle` with: a `DoorDesign` (how the leaf is drawn), surface colors, a default `HardwareFinish`, and a `SoundProfile` preset. Adding one touches only `DoorStyle`, a drawing case in `DoorArt.swift` if it needs a new design, and a preset in `SoundProfile.swift`.
 
-Backlog of ideas (any hinged thing works):
+| Shipped | Design | Default metal |
+|---|---|---|
+| Oak | Four raised panels, knob, peephole | Iron |
+| Cottage | Painted, four-pane window, two panels, knob | Brass |
+| Barn | Vertical boards, Z brace, strap hinges, D-pull | Iron |
+| Castle | Boards, iron bands with studs, strap hinges, ring pull | Bronze |
+| Modern | Flat slab with grooves, long bar handle, slim hinges | Chrome |
 
-| Style | Twist |
-|---|---|
-| Oak door, iron hinges | **MVP** |
-| Barn door | Heavy, slow, deep creak |
-| Saloon doors | Two leaves; swing-back wobble after release |
-| Castle gate | Chains, echo, very slow |
-| Fridge | Seal "thwup", interior light, hum |
-| Car door | Satisfying "thunk", key chime when open |
-| Window shutters | Wind, birds outside |
-| Treasure chest | Gold glint and "ta-da" on full open |
-| Spaceship airlock | Hiss, no creak |
-| Haunted door | Creak never quite stops… |
-
-Later, `DoorStyle` moves from an enum to a `Codable` struct loaded from a bundled JSON catalogue so styles can be added without code changes.
-
----
+Ideas for more: saloon doors (two leaves, swing-back wobble), fridge (seal "thwup", light inside), car door (thunk, key chime), window shutters (wind, birds), treasure chest (ta-da), airlock (hiss), haunted door (the creak never quite stops). Scenes: a scene is one painter function in `InsideScenes.swift`.
 
 ## 8. Testing strategy
 
 | Level | How | What |
 |---|---|---|
-| Unit | Swift Testing (`DuorTests`) | `DoorMotionInterpreter`: first sample silent, unlatch, swing direction, creak threshold, close classification, long-pause clamp, open stop. `DoorSynth`: silent when idle, every sound audible / finite / ≤ 0 dBFS / decays, deterministic per seed, knocks vary, creak follows speed and fades, command bursts bounded. **Runs in CI.** |
+| Unit | Swift Testing (`DuorTests`) | `DoorMotionInterpreter`: first sample silent, unlatch, swing direction, creak threshold, close classification, long-pause clamp, open stop, jitter and flicker silence, hysteresis. `DoorSynth`: silent when idle, every sound for every door type audible / finite / ≤ 0 dBFS / decays, door types sound different, deterministic per seed, knocks vary, creak follows speed and fades, command bursts bounded. **Runs in CI.** |
 | Audio | `make sounds` + listening | Timbre and balance (§6.4). |
 | Simulator, manual | iPhone Duo simulator, fold via Xcode Device Hub or `hinge` CLI | Outside/inside switching, cover display layout, settings sheet. |
 | Simulator, scripted | `hinge sweep 0 120 1` (slow open), `hinge sweep 120 0 0.15` (slam) | Event sequences and sound choice. Simulator angles are clean; use only for logic, not tuning. |
@@ -345,7 +368,7 @@ Later, `DoorStyle` moves from an enum to a `Codable` struct loaded from a bundle
 | **M1 — MVP sound** ✅ synth / ⏳ device | Hand-rolled synth for all sounds ✅. Still open: tune thresholds and levels on a real device, latency check. |
 | **M2 — MVP visuals** ✅ mostly | Door art (outside + inside face) ✅, room ✅, hinges on the crease ✅, knock dent + slam shake ✅, haptics per event ✅, portrait lock ✅. Still open: Reduce Motion, onboarding hint. |
 | **M3 — Polish** | Haptic tuning, captions, angle normalisation (§6.3), app icon, onboarding hint ("fold me"). |
-| **M4 — Styles** | Style catalogue as data; 3–5 new doors; thumbnail picker. |
+| **M4 — Styles** ✅ | Five doors, five metals, five scenes, picture pickers, per-door sound signatures, animated leaf. |
 | **Later** | "Knock anywhere" (accelerometer tap detection on the back), Android port via cross-platform hinge libs, shared "door of the day". |
 
 ---

@@ -17,6 +17,8 @@ struct DoorInsideView: View {
     var crease: CGRect?
     /// Draw the whole swing because nothing swings physically.
     var simulatesSwing = false
+    /// Add a cat to the scene beyond the door.
+    var catLovers = false
 
     @State private var hasSwungIn = false
 
@@ -34,7 +36,7 @@ struct DoorInsideView: View {
                 // The crease, when the system reserves one, is the shadowed gap between door and frame.
                 Color(red: 0.1, green: 0.07, blue: 0.05)
 
-                DoorwayArt(look: look, light: light)
+                DoorwayArt(look: look, light: light, catLovers: catLovers)
                     .frame(width: split.doorway.width, height: split.doorway.height)
                     .offset(x: split.doorway.minX, y: split.doorway.minY)
                     .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: hingeDegrees)

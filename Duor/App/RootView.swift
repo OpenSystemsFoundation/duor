@@ -9,6 +9,7 @@ struct RootView: View {
     @AppStorage(DoorStyle.storageKey) private var style: DoorStyle = .oak
     @AppStorage(HardwareFinish.storageKey) private var hardware: HardwareFinish = .iron
     @AppStorage(InsideScene.storageKey) private var scene: InsideScene = .livingRoom
+    @AppStorage(SceneLife.catLoversKey) private var catLovers = false
 
     private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
 
@@ -41,7 +42,7 @@ struct RootView: View {
                     if showsInside {
                         DoorInsideView(
                             look: look, hingeDegrees: controller.angle, crease: crease,
-                            simulatesSwing: !controller.hasHardwareHinge || Self.isSimulator)
+                            simulatesSwing: !controller.hasHardwareHinge || Self.isSimulator, catLovers: catLovers)
                     } else {
                         DoorOutsideView(look: look, feedback: controller.feedback, onKnock: controller.knock)
                     }
@@ -71,7 +72,7 @@ struct RootView: View {
         .sheet(isPresented: $isShowingSettings) {
             // Unfolded: the hinge is open well past halfway (folded or no hinge: four tiles per row).
             SettingsView(
-                style: $style, hardware: $hardware, scene: $scene,
+                style: $style, hardware: $hardware, scene: $scene, catLovers: $catLovers,
                 isUnfolded: controller.hasHardwareHinge && controller.angle > 100)
         }
         // Paused while Settings is open so browsing doesn't creak.

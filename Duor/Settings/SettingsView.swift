@@ -5,13 +5,17 @@ struct SettingsView: View {
     @Binding var style: DoorStyle
     @Binding var hardware: HardwareFinish
     @Binding var scene: InsideScene
+    /// Unfolded there's room for every tile in one row; folded, at most four per row.
+    var isUnfolded = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             Form {
                 Section("Door") {
-                    PickerRow(items: DoorStyle.allCases, selection: style, label: \.displayName) { door in
+                    PickerGrid(
+                        items: DoorStyle.allCases, selection: style, label: \.displayName, isUnfolded: isUnfolded
+                    ) { door in
                         DoorLeafArt(
                             design: door.design,
                             palette: DoorLook(style: door, hardware: door.defaultHardware, scene: scene).palette)
@@ -40,7 +44,9 @@ struct SettingsView: View {
                 }
 
                 Section("Behind the door") {
-                    PickerRow(items: InsideScene.allCases, selection: scene, label: \.displayName) { scene in
+                    PickerGrid(
+                        items: InsideScene.allCases, selection: scene, label: \.displayName, isUnfolded: isUnfolded
+                    ) { scene in
                         InsideSceneArt(scene: scene)
                     } onSelect: { newScene in
                         scene = newScene
@@ -53,48 +59,58 @@ struct SettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+                // On the iPhone Duo: in the vertical control lane, like the settings button.
+                .axisBehavior(.verticalPreferred)
             }
         }
     }
 }
 
-/// A horizontal row of picture tiles with captions.
-private struct PickerRow<Item: Identifiable & Equatable, Art: View>: View {
+/// Picture tiles with captions, all visible at once: four per row when folded (or on a phone
+/// without a hinge), every tile in one row when unfolded.
+private struct PickerGrid<Item: Identifiable & Equatable, Art: View>: View {
     let items: [Item]
     let selection: Item
     let label: KeyPath<Item, LocalizedStringResource>
+    let isUnfolded: Bool
     @ViewBuilder let art: (Item) -> Art
     let onSelect: (Item) -> Void
 
+    private var columns: [GridItem] {
+        let count = isUnfolded ? items.count : min(items.count, 4)
+        return Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: count)
+    }
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 14) {
-                ForEach(items) { item in
-                    let isSelected = item == selection
-                    Button {
-                        onSelect(item)
-                    } label: {
-                        VStack(spacing: 6) {
-                            art(item)
-                                .frame(width: 66, height: 100)
-                                .clipShape(.rect(cornerRadius: 8))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .strokeBorder(
-                                            isSelected ? Color.accentColor : .secondary.opacity(0.3),
-                                            lineWidth: isSelected ? 3 : 1)
-                                }
-                            Text(item[keyPath: label])
-                                .font(.caption)
-                                .foregroundStyle(isSelected ? .primary : .secondary)
-                        }
+        LazyVGrid(columns: columns, spacing: 14) {
+            ForEach(items) { item in
+                let isSelected = item == selection
+                Button {
+                    onSelect(item)
+                } label: {
+                    VStack(spacing: 6) {
+                        art(item)
+                            .aspectRatio(0.66, contentMode: .fit)
+                            .frame(maxWidth: 80)
+                            .clipShape(.rect(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(
+                                        isSelected ? Color.primary : .secondary.opacity(0.3),
+                                        lineWidth: isSelected ? 3 : 1)
+                            }
+                        Text(item[keyPath: label])
+                            .font(.caption)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .foregroundStyle(isSelected ? .primary : .secondary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
-            .padding(.vertical, 6)
         }
+        .padding(.vertical, 6)
     }
 }
 
@@ -118,7 +134,7 @@ private struct MetalSwatch: View {
                     )
                     .frame(width: 40, height: 40)
                     .overlay {
-                        Circle().strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 3).padding(-5)
+                        Circle().strokeBorder(isSelected ? Color.primary : .clear, lineWidth: 3).padding(-5)
                     }
                     .shadow(color: .black.opacity(0.25), radius: 2, y: 1)
                 Text(finish.displayName)

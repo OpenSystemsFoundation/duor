@@ -90,10 +90,10 @@ struct DoorSynthTests {
         #expect(peak(samples) <= 1)
     }
 
-    @Test(arguments: ["oak", "pine", "barn", "castle", "modern"])
+    @Test(arguments: ["oak", "pine", "barn", "castle", "spaceship", "steel"])
     func everyDoorSoundsCleanly(_ door: String) {
         let profiles: [String: SoundProfile] = [
-            "oak": .oak, "pine": .pine, "barn": .barn, "castle": .castle, "modern": .modern,
+            "oak": .oak, "pine": .pine, "barn": .barn, "castle": .castle, "spaceship": .spaceship, "steel": .steel,
         ]
         for sound in DoorSound.allCases {
             let synth = DoorSynth(sampleRate: sampleRate, profile: profiles[door]!.with(metal: .brass), seed: 9)
@@ -112,7 +112,7 @@ struct DoorSynthTests {
             synth.play(.knock)
             return render(synth, seconds: 0.3)
         }
-        let knocks = [SoundProfile.oak, .pine, .barn, .castle, .modern].map(knock)
+        let knocks = [SoundProfile.oak, .pine, .barn, .castle, .spaceship, .steel].map(knock)
         for (index, first) in knocks.enumerated() {
             for second in knocks[(index + 1)...] {
                 #expect(first != second)

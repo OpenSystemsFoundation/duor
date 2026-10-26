@@ -15,5 +15,7 @@ iPhone Duo door simulator. Design: `docs/SOLUTION_DESIGN.md`.
 - Hinge: use `status` transitions for discrete events, the angle only for continuous effects. Never assume an update rate. Never use the hinge for layout.
 - Keep door logic in pure value types (`DoorMotionInterpreter`) with tests; views and `DoorController` stay thin.
 - Audio is synthesized, not sampled. Code in `Duor/Audio/DSP` is real-time: `nonisolated` `Sendable` value types, no allocation / logging / Objective-C in `render`, fixed storage via `InlineArray` and `SIMD8`. It must not import AVFoundation or UIKit (the render tool compiles it for macOS).
+- The app uses the UIKit lifecycle (`DuorApp.swift`) only so `DoorHostingController` can lock the interface orientation. Keep UI in SwiftUI. After switching lifecycles, delete the app from the simulator once: restored scene sessions keep the old delegate.
+- Debug launch arguments: `-showSettings YES`, `-doorStyle <oak|cottage|barn|castle|spaceship|metal>`, `-hardware <iron|brass|chrome|copper|bronze>`, `-insideScene <livingRoom|greatHall|beach|forest|space|brickWall>`.
 - Project file is JSON (`Duor.xcodeproj/project.xcproj`). New files must be listed there with `target-membership` (`Duor/compile-sources`, `Duor/resources`, `DuorTests/compile-sources`).
 - User-facing strings go through `LocalizedStringResource` / `Text` so the string catalog picks them up.

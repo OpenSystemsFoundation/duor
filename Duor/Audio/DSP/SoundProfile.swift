@@ -43,11 +43,13 @@ nonisolated struct SoundCharacter: Sendable {
     var heavyBolt = false
     /// A soft-close damper and magnetic catch: no slams, a soft thud and a click.
     var softClose = false
+    /// An airlock: a pneumatic hiss when the hatch unseals and seals (0 = none).
+    var airlockHiss: Float = 0
 }
 
 extension SoundProfile {
-    /// Solid oak door, black iron hinges, steel latch.
-    nonisolated static let oak = SoundProfile(
+    /// Solid oak, iron hinges, steel latch: the reference wood every other door is derived from.
+    nonisolated static let oakWood = SoundProfile(
         panel: [
             ModeSpec(110, 0.080, 0.35),
             ModeSpec(205, 0.070, 0.70),
@@ -167,34 +169,42 @@ extension SoundProfile {
         return profile
     }
 
+    /// Solid oak with a friendly fist knock: a soft, warm "thump-thump". Long, padded contact,
+    /// heavily damped, a little frame thud, no snap.
+    nonisolated static let oak: SoundProfile = {
+        var profile = SoundProfile.oakWood
+        profile.knock = oakWood.knock.scaled(pitch: 0.95, decay: 0.7, gain: 1.4)
+        profile.knockTouch = KnockTouch(contact: 0.0019...0.0025, snapLevel: 0, snapPitch: 1, thump: 0.12)
+        return profile
+    }()
+
     /// A light painted pine door: higher, a little hollower, a lighter creak.
     nonisolated static let pine: SoundProfile = {
-        var profile = SoundProfile.oak
-        profile.panel = oak.panel.scaled(pitch: 1.3, decay: 1.15)
-        profile.knock = oak.knock.scaled(pitch: 1.25, decay: 1.2)
-        profile.frame = oak.frame.scaled(pitch: 1.2, decay: 0.9)
-        profile.creak.formants = oak.creak.formants.scaled(pitch: 1.15)
-        profile.creak.body = oak.creak.body.scaled(pitch: 1.3)
+        var profile = SoundProfile.oakWood
+        profile.panel = oakWood.panel.scaled(pitch: 1.3, decay: 1.15)
+        profile.frame = oakWood.frame.scaled(pitch: 1.2, decay: 0.9)
+        profile.creak.formants = oakWood.creak.formants.scaled(pitch: 1.15)
+        profile.creak.body = oakWood.creak.body.scaled(pitch: 1.3)
         profile.creak.baseRate = 55
         profile.creak.ratePerDegree = 1.9
         profile.creak.level = 0.16
         profile.room = 0.1
         profile.character.glassRattle = 0.6
-        // A soft knock: painted wood, a rounder knuckle, little snap, barely a rattle.
-        profile.knock = oak.knock.scaled(pitch: 1.08, decay: 1.25, gain: 0.85)
-        profile.knockTouch = KnockTouch(contact: 0.0017...0.0024, snapLevel: 0.07, snapPitch: 2.4)
+        // A crisp knuckle knock: the reference wood's knock with its sharp snap.
+        profile.knock = oakWood.knock
+        profile.knockTouch = KnockTouch()
         return profile
     }()
 
     /// A big weathered barn door: low and woody, a long groaning creak, a wide space.
     nonisolated static let barn: SoundProfile = {
-        var profile = SoundProfile.oak
-        profile.panel = oak.panel.scaled(pitch: 0.75, decay: 1.4)
-        profile.knock = oak.knock.scaled(pitch: 0.8, decay: 1.3, gain: 1.1)
-        profile.frame = oak.frame.scaled(pitch: 0.8, decay: 1.3)
-        profile.hinge = oak.hinge.scaled(pitch: 0.85, decay: 1.3)
-        profile.creak.formants = oak.creak.formants.scaled(pitch: 0.8)
-        profile.creak.body = oak.creak.body.scaled(pitch: 0.8, decay: 1.4, gain: 1.6)
+        var profile = SoundProfile.oakWood
+        profile.panel = oakWood.panel.scaled(pitch: 0.75, decay: 1.4)
+        profile.knock = oakWood.knock.scaled(pitch: 0.8, decay: 1.3, gain: 1.1)
+        profile.frame = oakWood.frame.scaled(pitch: 0.8, decay: 1.3)
+        profile.hinge = oakWood.hinge.scaled(pitch: 0.85, decay: 1.3)
+        profile.creak.formants = oakWood.creak.formants.scaled(pitch: 0.8)
+        profile.creak.body = oakWood.creak.body.scaled(pitch: 0.8, decay: 1.4, gain: 1.6)
         profile.creak.baseRate = 26
         profile.creak.ratePerDegree = 1.1
         profile.creak.wander = 0.26
@@ -207,14 +217,14 @@ extension SoundProfile {
 
     /// A massive castle door in a stone hall: deep thuds, slow loud groan, long echo.
     nonisolated static let castle: SoundProfile = {
-        var profile = SoundProfile.oak
-        profile.panel = oak.panel.scaled(pitch: 0.6, decay: 1.8)
+        var profile = SoundProfile.oakWood
+        profile.panel = oakWood.panel.scaled(pitch: 0.6, decay: 1.8)
         // Heavy and dark: a low, slow "thoom" of a massive leaf, almost no snap.
-        profile.knock = oak.knock.scaled(pitch: 0.58, decay: 2, gain: 1.5)
-        profile.frame = oak.frame.scaled(pitch: 0.6, decay: 1.8)
-        profile.hinge = oak.hinge.scaled(pitch: 0.7, decay: 1.6)
-        profile.creak.formants = oak.creak.formants.scaled(pitch: 0.65)
-        profile.creak.body = oak.creak.body.scaled(pitch: 0.65, decay: 1.6, gain: 1.8)
+        profile.knock = oakWood.knock.scaled(pitch: 0.58, decay: 2, gain: 1.5)
+        profile.frame = oakWood.frame.scaled(pitch: 0.6, decay: 1.8)
+        profile.hinge = oakWood.hinge.scaled(pitch: 0.7, decay: 1.6)
+        profile.creak.formants = oakWood.creak.formants.scaled(pitch: 0.65)
+        profile.creak.body = oakWood.creak.body.scaled(pitch: 0.65, decay: 1.6, gain: 1.8)
         profile.creak.baseRate = 18
         profile.creak.ratePerDegree = 0.8
         profile.creak.wander = 0.3
@@ -226,18 +236,130 @@ extension SoundProfile {
         return profile
     }()
 
-    /// A modern solid-core slab on well-oiled hinges: tight, clean, barely a whisper of creak.
-    nonisolated static let modern: SoundProfile = {
-        var profile = SoundProfile.oak
-        profile.panel = oak.panel.scaled(pitch: 1.1, decay: 0.8)
-        profile.knock = oak.knock.scaled(pitch: 1.15, decay: 0.75)
-        profile.frame = oak.frame.scaled(pitch: 1.1, decay: 0.75)
-        profile.creak.formants = oak.creak.formants.scaled(pitch: 1.3)
-        profile.creak.baseRate = 70
-        profile.creak.hiss = 0.04
-        profile.creak.level = 0.05
-        profile.room = 0.08
+    /// A spaceship hatch of thin aluminum: light, bright "dink" rings instead of wood, a quiet
+    /// servo hum instead of a creak, a damper instead of a slam, and an airlock hiss.
+    nonisolated static let spaceship: SoundProfile = {
+        var profile = SoundProfile.oakWood
+        // Thin aluminum hull panel: bright, inharmonic, rings a little.
+        profile.panel = [
+            ModeSpec(390, 0.09, 0.5),
+            ModeSpec(910, 0.08, 0.9),
+            ModeSpec(1540, 0.07, 1.0),
+            ModeSpec(2320, 0.055, 0.7),
+            ModeSpec(3350, 0.04, 0.45),
+            ModeSpec(4700, 0.03, 0.3),
+        ]
+        profile.knock = [
+            ModeSpec(420, 0.07, 0.55),
+            ModeSpec(980, 0.06, 1.0),
+            ModeSpec(1650, 0.05, 0.85),
+            ModeSpec(2480, 0.04, 0.55),
+            ModeSpec(3600, 0.03, 0.35),
+            ModeSpec(5100, 0.02, 0.2),
+        ]
+        // A light aluminum frame: a hollow "tunk" rather than a woody thud.
+        profile.frame = [
+            ModeSpec(160, 0.06, 0.5),
+            ModeSpec(380, 0.06, 0.9),
+            ModeSpec(720, 0.05, 1.0),
+            ModeSpec(1150, 0.04, 0.7),
+            ModeSpec(1800, 0.03, 0.45),
+            ModeSpec(2700, 0.02, 0.3),
+        ]
+        profile.latch = oakWood.latch.scaled(pitch: 1.15, decay: 1.3)
+        profile.hinge = oakWood.hinge.scaled(pitch: 1.25, decay: 1.2)
+        // A smooth servo hum: a steady pulse through near-harmonic resonances, no grit.
+        profile.creak.formants = [
+            ModeSpec(700, 0.03, 0.6),
+            ModeSpec(1400, 0.025, 0.5),
+            ModeSpec(2100, 0.02, 0.3),
+            ModeSpec(2800, 0.015, 0.15),
+        ]
+        profile.creak.body = [
+            ModeSpec(350, 0.04, 0.3),
+            ModeSpec(700, 0.03, 0.2),
+            ModeSpec(1050, 0.02, 0.1),
+        ]
+        profile.creak.baseRate = 150
+        profile.creak.ratePerDegree = 1.8
+        profile.creak.maxRate = 600
+        profile.creak.wander = 0.015
+        profile.creak.jitter = 0.002
+        profile.creak.hiss = 0
+        profile.creak.brighten = 0.08
+        profile.creak.closingPitch = 0.92
+        profile.creak.level = 0.06
+        profile.room = 0.14
+        profile.knockTouch = KnockTouch(contact: 0.0009...0.0013, snapLevel: 0.1, snapPitch: 2)
         profile.character.softClose = true
+        profile.character.airlockHiss = 0.6
         return profile
     }()
+
+    /// A steel door in a concrete stairwell: plates that ring briefly, a booming slam, and a hinge
+    /// that squeals (metallic and tonal, but low and breathy enough not to hurt).
+    nonisolated static let steel: SoundProfile = {
+        var profile = SoundProfile.oakWood
+        profile.panel = [
+            ModeSpec(180, 0.16, 0.7),
+            ModeSpec(420, 0.13, 1.0),
+            ModeSpec(690, 0.11, 0.9),
+            ModeSpec(1150, 0.08, 0.6),
+            ModeSpec(1720, 0.05, 0.35),
+            ModeSpec(2650, 0.035, 0.2),
+        ]
+        profile.knock = [
+            ModeSpec(230, 0.12, 0.5),
+            ModeSpec(520, 0.10, 0.9),
+            ModeSpec(860, 0.08, 1.0),
+            ModeSpec(1350, 0.06, 0.8),
+            ModeSpec(2100, 0.045, 0.5),
+            ModeSpec(3200, 0.03, 0.35),
+        ]
+        profile.frame = [
+            ModeSpec(110, 0.14, 0.7),
+            ModeSpec(240, 0.12, 1.0),
+            ModeSpec(380, 0.10, 0.9),
+            ModeSpec(620, 0.08, 0.6),
+            ModeSpec(950, 0.05, 0.35),
+            ModeSpec(1500, 0.035, 0.2),
+        ]
+        profile.hinge = oakWood.hinge.scaled(pitch: 0.95, decay: 1.15, gain: 0.8)
+        profile.latch = oakWood.latch.scaled(pitch: 0.8, decay: 1.4, gain: 0.85)
+        // A lower, breathier squeal: wider resonances and a rougher stick-slip, so it groans
+        // rather than pierces.
+        profile.creak.formants = [
+            ModeSpec(1050, 0.008, 0.9),
+            ModeSpec(1750, 0.007, 1.0),
+            ModeSpec(2600, 0.006, 0.5),
+            ModeSpec(3600, 0.005, 0.2),
+        ]
+        profile.creak.body = [
+            ModeSpec(420, 0.06, 0.3),
+            ModeSpec(690, 0.05, 0.3),
+            ModeSpec(1150, 0.04, 0.2),
+        ]
+        profile.creak.baseRate = 70
+        profile.creak.ratePerDegree = 1.8
+        profile.creak.maxRate = 480
+        profile.creak.wander = 0.12
+        profile.creak.jitter = 0.04
+        profile.creak.hiss = 0.02
+        profile.creak.brighten = 0.08
+        profile.creak.level = 0.11
+        profile.creak.fullSpeed = 40
+        profile.room = 0.18
+        profile.knockTouch = KnockTouch(contact: 0.0006...0.0009, snapLevel: 0.15, snapPitch: 2.2)
+        return profile
+    }()
+
+    /// Rushing air: broad, high resonances that turn noise into a hiss.
+    nonisolated static let air: ModeSet = [
+        ModeSpec(1800, 0.0025, 0.5),
+        ModeSpec(2700, 0.0022, 0.8),
+        ModeSpec(3800, 0.0020, 1.0),
+        ModeSpec(5200, 0.0018, 0.9),
+        ModeSpec(6800, 0.0015, 0.7),
+        ModeSpec(8800, 0.0012, 0.5),
+    ]
 }

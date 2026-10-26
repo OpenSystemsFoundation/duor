@@ -4,7 +4,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v0.5 — 26 Oct 2026 (five doors, five metals, five scenes, animated leaf) |
+| **Status** | Draft v0.7 — 26 Oct 2026 (spaceship and metal doors, forest deer, picker grid) |
 | **Platform** | iOS 27.1+, iPhone Duo (graceful fallback on other iPhones) |
 | **Stack** | Swift 6, SwiftUI, AVAudioEngine + hand-rolled DSP (no samples), Swift Testing |
 | **MVP** | One door: oak with iron hinges |
@@ -119,7 +119,9 @@ The two halves of the phone are the **door leaf** and the **wall/frame**. The cr
 Two rules follow from that:
 
 1. **On a real Duo, the screen on the swinging half never animates the swing.** The phone half physically rotates, so it *is* the door. Its screen shows the leaf's inside face standing still; drawing a 3D swing on top would count the motion twice (that was the v0.1 bug). Where nothing swings physically (the Simulator, phones without a hinge) the leaf swings on screen at the true angle: it stands at 180° − hinge angle to the doorway.
-2. **The door is fixed to the device.** The app asks for portrait only, but the inner display is a resizable scene and the system rotates it anyway. `DeviceFixed` counter-rotates the whole scene so the door never turns with the interface. It knows the interface turned because each screen has a fixed upright shape (inner: wide book posture; cover: tall), and the physical device orientation says which way to turn back.
+2. **The door is fixed to the device.** The inner display is a resizable scene, which ignores the Info.plist orientation list, and the system's rotation animation spun the whole window through 90° and back. The app is therefore hosted in UIKit (`AppDelegate` → `SceneDelegate` → `DoorHostingController`, a `UIHostingController` subclass) so its root view controller can set **`prefersInterfaceOrientationLocked = true`** (iOS 26+). With the lock, turning the phone turns the door with it and nothing re-lays out. When the system lifts the lock (not full screen, e.g. Split View) `DeviceFixed` still counter-rotates the scene: each screen has a fixed upright shape (inner: wide book posture; cover: tall), and the last landscape device orientation says which way to turn back.
+
+   *Tried and rejected:* the Info.plist orientation list and `supportedInterfaceOrientations` (ignored by resizable scenes); suppressing the rotation animation (it runs outside the app); `UIRequiresFullScreen` (deprecated, and it locked the interface to the inner panel's native orientation, which is the device's landscape).
 
 ```
    FOLDED (cover display)             UNFOLDING (inner display)              FLAT (180°)
@@ -150,6 +152,8 @@ Two rules follow from that:
 
 Knocking is only enabled while closed (you knock on a closed door).
 
+**Controls.** The settings button is a toolbar item with `axisBehavior(.verticalPreferred)` (in a `NavigationStack` with a hidden bar), and so is the settings sheet's Done button. On the iPhone Duo both sit in the system's vertical control lane on the trailing edge, folded and unfolded.
+
 **Which face to draw.** With a real hinge, the app follows the *screen*, not the hinge status: the system decides when to switch displays, and a slightly opened phone often stays on the cover display. Only the inner display reports a fold region (`reservedRegions(kind: .division, options: .includeInactive)`, inactive when flat); the cover never does. So `RootView` draws the inside view when a fold region exists (or the hinge is fully open), and the outside face otherwise. Screen shape can't be used, because the inner display can rotate. Without a hinge there is one screen, so it follows the simulated hinge status.
 
 ### 4.3 Settings
@@ -158,13 +162,28 @@ A gear button opens a sheet with three picture pickers. Choices persist with `@A
 
 | Setting | Options | Notes |
 |---|---|---|
-| **Door** | Oak, Cottage, Barn, Castle, Modern | Picking a door resets the hardware to the door's own metal. |
+| **Door** | Oak, Cottage, Barn, Castle, Spaceship, Metal | Picking a door resets the hardware and the scene to the door's own. Shown as a grid so every door is always visible: four per row folded (or without a hinge), all in one row unfolded. |
 | **Hardware** | Iron, Brass, Chrome, Copper, Bronze | Colors and shine of hinges, handle, studs and strike plate, *and* the pitch and ring of the latch and hinges. |
-| **Behind the door** | Living room, Beach, Forest, Outer space, Brick wall | The brick wall has a note: "Nice try." |
+| **Behind the door** | Living room, Great hall, Beach, Forest, Outer space, Brick wall | Picking a door also picks its scene (Oak → living room, Cottage → beach, Barn → forest, Castle → great hall, Spaceship → outer space, Metal → brick wall). |
 
 Hinge updates are paused (`isEnabled: false`) while the sheet is open, so browsing doesn't creak. Debug builds open the sheet on launch with `-showSettings YES` (for screenshots and UI tests); all three settings can also be passed as launch arguments, e.g. `-doorStyle castle -hardware bronze -insideScene space`.
 
-### 4.4 The animated leaf
+### 4.4 Living scenes
+
+Each scene is drawn in three layers: the still background (drawn once), a **life** layer at up to 30 fps (`SceneLife`, a `TimelineView`, paused while the door is too shut to see in), then the darkness and the door frame on top, so visitors pass *behind* the frame.
+
+| Scene | Ambient | Visitors |
+|---|---|---|
+| Living room (a small cabinet with a vase of flowers) | Pendant lamp sways | A ginger cat walks past close by or further back, or peeks in from the side, looks around and goes back; a beagle trots past (tail wagging, tongue out) |
+| Great hall | Torch flames flicker and glow | A little knight on patrol; a bat |
+| Beach (shells, a starfish, rippled sand) | Waves roll, foam breathes, clouds of different shapes drift by | Seagulls; a crab scuttling sideways; a sailboat on the horizon; a leaping dolphin with splashes; a cruising shark fin |
+| Forest (a winding path into a glowing passage, hazy pine layers, a leafy canopy arch, sunbeams, bushes on the left, trunks on the right) | Leaves drift down | A deer pops up from behind a bush, looks right at you, blinks, twitches an ear, and ducks back down, or bolts out and runs off to the right behind the trees; birds; a hopping rabbit |
+| Outer space (a distant spiral galaxy in soft nebula haze) | Stars twinkle | Shooting stars; a UFO with blinking lights; a tumbling astronaut |
+| Brick wall (shaded, pitted, chipped bricks; grime; moss; ivy climbing) | — | A spider drops in to say hi; a very determined snail |
+
+Visits are a pure function of time: each period gets one visit at a seeded random moment, direction and lane, so nothing is stored and every frame is cheap.
+
+### 4.5 The animated leaf
 
 The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`SwingingLeaf`, an `Animatable` view), so it lags a touch behind a fast fold and bounces off the stop. When the inside view appears, the leaf swings open from shut. Past 90° of on-screen rotation it shows its outside face, as a real door would.
 
@@ -216,22 +235,26 @@ The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`Sw
 ### 5.3 Event logic (DoorMotionInterpreter)
 
 ```
-on reading r (previous p):
-  if p == nil                      → remember r, no events   (initial state is not a movement)
-  Δt  = clamp(r.t − p.t, 1/240 s, 0.25 s)
-  v_i = (r.deg − p.deg) / Δt                       (+ opening, − closing)
-  v   = v + (v_i − v) · 0.5                         (exponential smoothing)
+on reading r:
+  first reading               → remember it; latched if r.deg ≤ 2°
+  moved = r.deg − anchor.deg  (anchor = last accepted position)
+  |moved| ≥ 1.5°              → v_i = moved / clamp(Δt, 1/240 s, 0.5 s); v += (v_i − v) · 0.5; anchor = r
+  otherwise, still > 0.3 s    → v = 0
   impact = max(|v_i|, |v|)
 
-  p.status == closed  ∧ r.status ≠ closed  → unlatched
-  r.status ≠ closed   ∧ |v| ≥ 6 °/s         → swing(v)
-  r.status == fullyOpen ∧ p.status ≠ fullyOpen → hitOpenStop(impact)
-  r.status == closed  ∧ p.status ≠ closed  → closed(gentle < 90 °/s ≤ firm < 260 °/s ≤ slam)
+  latched ∧ r.deg ≥ latched angle + 3°    → unlatched
+  ¬latched ∧ moved ∧ |v| ≥ 6 °/s          → swing(v)
+  stop armed ∧ r.status == fullyOpen      → hitOpenStop(impact); re-arms 8° back from the stop
+  ¬latched ∧ r.deg ≤ 2°                   → closed(gentle < 90 °/s ≤ firm < 260 °/s ≤ slam); latched
+
+on 0.35 s without readings (settle):
+  ¬latched ∧ last.status == closed ∧ last.deg ≤ 15° → closed(…); latched
 ```
 
 Real readings jitter by a fraction of a degree and the status can flicker at the closed and fully-open points, which used to make the door creak while lying flat and click repeatedly when shut. So:
 
 - **Jitter tolerance (1.5°):** velocity is measured from the last *accepted* position; smaller changes are ignored. Slow real motion still gets through after a few samples, with its true elapsed time.
+- **Latch by angle, not status.** The system's `.closed` status means "too shut for the inner display" and switches on as early as ~85° while folding (measured in the simulator: open → partiallyOpen at ~20°, back to closed at ~84°). The door latches at ≤ 2°. Updates thin out near shut (the last sample can read ~10° while the hinge is at 5°), so a hinge that comes to rest at ≤ 15° with the system reporting closed latches after 0.35 s of stillness.
 - **Hysteresis:** the door is either latched or not. It unlatches only after opening 3° past the latched angle and latches once on reaching `.closed`; flickers in between do nothing. The open stop fires once, then re-arms only after the door swings 8° back.
 
 All thresholds live in `DoorMotionInterpreter.Configuration` and **must be tuned on a real device** (§8).
@@ -296,11 +319,12 @@ Each door type is a `SoundProfile` preset (its wood, frame, creak and room) plus
 
 | Door | Wood and room | Signature |
 |---|---|---|
-| Oak | Solid oak (the reference), small hallway | — |
-| Cottage | Painted pine: higher, a little hollower, lighter creak | **Glass panes rattle** on knocks, latches and slams |
+| Oak | Solid oak (the reference wood), small hallway. Knock: a soft, warm **fist knock** (padded contact, damped, a little frame thud, no snap) | — |
+| Cottage | Painted pine: higher, lighter creak. Knock: a crisp **knuckle knock** with a sharp snap | **Glass panes rattle** on latches and slams |
 | Barn | Big weathered boards: low, long groaning creak, wide space | **Loose boards clatter** after hits |
-| Castle | Massive oak, very low, slow loud groan, stone-hall echo | **Heavy iron bolt**: low, long clanks, a scrape when drawn |
-| Modern | Solid-core slab, tight and clean, barely any creak | **Soft-close damper**: can't slam, closes with a soft thud and a magnetic click |
+| Castle | Massive oak, very low, slow loud groan, stone-hall echo. Knock: heavy and dark, with a deep thump of the whole leaf | **Heavy iron bolt**: low, long clanks, a scrape when drawn |
+| Spaceship | Thin aluminum hull: bright, short metallic "dink" knocks, a hollow aluminum frame, a quiet servo hum instead of a creak | **Airlock**: a pneumatic hiss when it unseals and seals; a damper instead of a slam (soft thud, magnetic click) |
+| Metal | Steel plates that ring briefly; knock is a metallic "bong"; stairwell echo | **Squealing hinge**: metallic and tonal but low and breathy (centroid ~1 kHz), a booming slam that settles in under a second |
 
 | Metal | Latch and hinges |
 |---|---|
@@ -328,7 +352,8 @@ A door type is a case in `DoorStyle` with: a `DoorDesign` (how the leaf is drawn
 | Cottage | Painted, four-pane window, two panels, knob | Brass |
 | Barn | Vertical boards, Z brace, strap hinges, D-pull | Iron |
 | Castle | Boards, iron bands with studs, strap hinges, ring pull | Bronze |
-| Modern | Flat slab with grooves, long bar handle, slim hinges | Chrome |
+| Spaceship | Chamfered hull panel, porthole with stars, glowing light strips, control pad, hazard stripes | Chrome |
+| Metal | Brushed riveted steel, wired-glass window, vent louvre, diamond-plate kick plate, lever handle | Iron |
 
 Ideas for more: saloon doors (two leaves, swing-back wobble), fridge (seal "thwup", light inside), car door (thunk, key chime), window shutters (wind, birds), treasure chest (ta-da), airlock (hiss), haunted door (the creak never quite stops). Scenes: a scene is one painter function in `InsideScenes.swift`.
 

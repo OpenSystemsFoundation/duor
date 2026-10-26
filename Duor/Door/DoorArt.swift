@@ -66,14 +66,15 @@ private struct DoorLeafPainter {
                 endPoint: CGPoint(x: width, y: height)))
         WoodGrain.paint(
             in: &context, rect: CGRect(origin: .zero, size: size), color: palette.woodShade, seed: 7,
-            strength: palette.isPainted ? 0.25 : 1)
+            strength: palette.grainStrength)
 
         switch design {
         case .fourPanel: paintFourPanel(in: &context)
         case .glazed: paintGlazed(in: &context)
         case .planks: paintPlanks(in: &context, boards: 5, brace: true)
         case .studded: paintStudded(in: &context)
-        case .slab: paintSlab(in: &context)
+        case .hatch: paintHatch(in: &context)
+        case .steel: paintSteel(in: &context)
         }
 
         paintHinges(in: &context)
@@ -192,12 +193,207 @@ private struct DoorLeafPainter {
         studs(in: &context, y: height * 0.96, size: stud * 0.8)
     }
 
-    private func paintSlab(in context: inout GraphicsContext) {
-        for fraction in [0.3, 0.7] {
+    /// A spaceship hatch: a chamfered hull panel, porthole, light strips and hazard stripes.
+    private func paintHatch(in context: inout GraphicsContext) {
+        let inset = width * 0.07
+        let chamfer = width * 0.1
+        let panel = CGRect(x: inset, y: inset, width: width - inset * 2, height: height - inset * 2)
+        var outline = Path()
+        outline.move(to: CGPoint(x: panel.minX + chamfer, y: panel.minY))
+        outline.addLine(to: CGPoint(x: panel.maxX - chamfer, y: panel.minY))
+        outline.addLine(to: CGPoint(x: panel.maxX, y: panel.minY + chamfer))
+        outline.addLine(to: CGPoint(x: panel.maxX, y: panel.maxY - chamfer))
+        outline.addLine(to: CGPoint(x: panel.maxX - chamfer, y: panel.maxY))
+        outline.addLine(to: CGPoint(x: panel.minX + chamfer, y: panel.maxY))
+        outline.addLine(to: CGPoint(x: panel.minX, y: panel.maxY - chamfer))
+        outline.addLine(to: CGPoint(x: panel.minX, y: panel.minY + chamfer))
+        outline.closeSubpath()
+        context.fill(outline, with: .color(.white.opacity(0.18)))
+        context.stroke(outline, with: .color(palette.woodShade.mix(with: .black, by: 0.3)), lineWidth: 2.5)
+
+        // Panel seams.
+        for fraction in [0.36, 0.74] {
             let y = height * fraction
-            context.fill(Path(CGRect(x: 0, y: y - 1.5, width: width, height: 2)), with: .color(.black.opacity(0.22)))
-            context.fill(Path(CGRect(x: 0, y: y + 0.5, width: width, height: 1.5)), with: .color(.white.opacity(0.35)))
+            context.fill(
+                Path(CGRect(x: panel.minX, y: y - 1, width: panel.width, height: 2)), with: .color(.black.opacity(0.25))
+            )
+            context.fill(
+                Path(CGRect(x: panel.minX, y: y + 1, width: panel.width, height: 1.5)),
+                with: .color(.white.opacity(0.5)))
         }
+
+        // Glowing light strips down both sides.
+        if let accent = palette.accent {
+            for x in [panel.minX + width * 0.05, panel.maxX - width * 0.08] {
+                // Below the control pad, so they never overlap it.
+                let strip = CGRect(x: x, y: height * 0.54, width: width * 0.03, height: height * 0.17)
+                context.drawLayer { layer in
+                    layer.addFilter(.shadow(color: accent.opacity(0.9), radius: 8))
+                    layer.fill(Path(roundedRect: strip, cornerRadius: strip.width / 2), with: .color(accent))
+                }
+                context.fill(
+                    Path(roundedRect: strip.insetBy(dx: strip.width * 0.3, dy: 3), cornerRadius: 2),
+                    with: .color(.white.opacity(0.8)))
+            }
+        }
+
+        // Porthole with a peek at space.
+        let porthole = CGRect(x: width / 2 - width * 0.17, y: height * 0.12, width: width * 0.34, height: width * 0.34)
+        context.fill(
+            Path(ellipseIn: porthole),
+            with: .linearGradient(
+                Gradient(colors: [Color(red: 0.05, green: 0.06, blue: 0.16), Color(red: 0.12, green: 0.08, blue: 0.25)]
+                ),
+                startPoint: CGPoint(x: porthole.minX, y: porthole.minY),
+                endPoint: CGPoint(x: porthole.maxX, y: porthole.maxY)))
+        var random = NoiseSource(seed: 31)
+        for _ in 0..<14 {
+            let angle = Double(random.unit()) * .pi * 2
+            let distance = CGFloat(random.unit()).squareRoot() * porthole.width * 0.42
+            let star = CGPoint(x: porthole.midX + cos(angle) * distance, y: porthole.midY + sin(angle) * distance)
+            context.fill(
+                Path(ellipseIn: CGRect(x: star.x, y: star.y, width: 1.6, height: 1.6)),
+                with: .color(.white.opacity(0.85)))
+        }
+        var glare = Path()
+        glare.addArc(
+            center: CGPoint(x: porthole.midX, y: porthole.midY), radius: porthole.width * 0.36,
+            startAngle: .degrees(200), endAngle: .degrees(250), clockwise: false)
+        context.stroke(glare, with: .color(.white.opacity(0.45)), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+        MetalPainter.ring(in: &context, rect: porthole, thickness: max(width * 0.035, 6), palette: palette)
+        for index in 0..<8 {
+            let angle = Double(index) / 8 * .pi * 2
+            let bolt = CGPoint(
+                x: porthole.midX + cos(angle) * porthole.width * 0.5,
+                y: porthole.midY + sin(angle) * porthole.width * 0.5)
+            context.fill(
+                Path(ellipseIn: CGRect(x: bolt.x - 2, y: bolt.y - 2, width: 4, height: 4)),
+                with: .color(palette.metal.mix(with: .black, by: 0.5)))
+        }
+
+        // Hazard stripes along the bottom.
+        let band = CGRect(
+            x: panel.minX + chamfer, y: height * 0.8, width: panel.width - chamfer * 2, height: height * 0.06)
+        context.drawLayer { layer in
+            layer.clip(to: Path(band))
+            layer.fill(Path(band), with: .color(Color(red: 0.98, green: 0.8, blue: 0.12)))
+            var x = band.minX - band.height
+            while x < band.maxX {
+                var stripe = Path()
+                stripe.move(to: CGPoint(x: x, y: band.maxY))
+                stripe.addLine(to: CGPoint(x: x + band.height, y: band.minY))
+                stripe.addLine(to: CGPoint(x: x + band.height * 1.7, y: band.minY))
+                stripe.addLine(to: CGPoint(x: x + band.height * 0.7, y: band.maxY))
+                stripe.closeSubpath()
+                layer.fill(stripe, with: .color(Color(white: 0.12)))
+                x += band.height * 1.4
+            }
+        }
+    }
+
+    /// A riveted steel door: brushed metal, a wired-glass window, a vent and a kick plate.
+    private func paintSteel(in context: inout GraphicsContext) {
+        // Brushed finish.
+        var random = NoiseSource(seed: 41)
+        for _ in 0..<Int(height / 3) {
+            let y = CGFloat(random.unit()) * height
+            context.fill(
+                Path(CGRect(x: 0, y: y, width: width, height: 0.8)),
+                with: .color(
+                    (random.unit() < 0.5 ? Color.white : Color.black).opacity(0.05 + 0.05 * Double(random.unit()))))
+        }
+        // A stamped inner panel with a rivet border.
+        let border = width * 0.06
+        let panel = CGRect(x: border, y: border, width: width - border * 2, height: height - border * 2)
+        context.stroke(Path(roundedRect: panel, cornerRadius: 4), with: .color(.black.opacity(0.35)), lineWidth: 2)
+        context.stroke(
+            Path(roundedRect: panel.insetBy(dx: 2, dy: 2), cornerRadius: 3), with: .color(.white.opacity(0.25)),
+            lineWidth: 1)
+        let rivet = max(width * 0.018, 3.5)
+        let columns = 7
+        let rows = 12
+        for index in 0..<columns {
+            let x = border / 2 + (width - border) * CGFloat(index) / CGFloat(columns - 1)
+            for y in [border / 2, height - border / 2] {
+                self.rivet(in: &context, at: CGPoint(x: x, y: y), size: rivet)
+            }
+        }
+        for index in 1..<(rows - 1) {
+            let y = border / 2 + (height - border) * CGFloat(index) / CGFloat(rows - 1)
+            for x in [border / 2, width - border / 2] { self.rivet(in: &context, at: CGPoint(x: x, y: y), size: rivet) }
+        }
+
+        // Wired-glass window.
+        let window = CGRect(x: width * 0.3, y: height * 0.1, width: width * 0.4, height: height * 0.2)
+        context.fill(Path(window.insetBy(dx: -5, dy: -5)), with: .color(palette.woodShade))
+        context.fill(
+            Path(window),
+            with: .linearGradient(
+                Gradient(colors: [Color(red: 0.55, green: 0.62, blue: 0.66), Color(red: 0.3, green: 0.35, blue: 0.4)]),
+                startPoint: CGPoint(x: window.minX, y: window.minY), endPoint: CGPoint(x: window.maxX, y: window.maxY)))
+        context.drawLayer { layer in
+            layer.clip(to: Path(window))
+            let step: CGFloat = 9
+            var offset = -window.height
+            while offset < window.width {
+                for direction in [1.0, -1.0] as [CGFloat] {
+                    var wire = Path()
+                    let startX = direction > 0 ? window.minX + offset : window.maxX - offset
+                    wire.move(to: CGPoint(x: startX, y: window.minY))
+                    wire.addLine(to: CGPoint(x: startX + direction * window.height, y: window.maxY))
+                    layer.stroke(wire, with: .color(.black.opacity(0.35)), lineWidth: 0.7)
+                }
+                offset += step
+            }
+        }
+
+        // Ventilation louvre.
+        let vent = CGRect(x: width * 0.22, y: height * 0.66, width: width * 0.56, height: height * 0.13)
+        context.fill(Path(vent.insetBy(dx: -4, dy: -4)), with: .color(palette.woodShade))
+        for index in 0..<6 {
+            let slat = CGRect(
+                x: vent.minX, y: vent.minY + vent.height * CGFloat(index) / 6, width: vent.width,
+                height: vent.height / 6)
+            context.fill(Path(slat), with: .color(Color(white: 0.08)))
+            context.fill(
+                Path(CGRect(x: slat.minX, y: slat.minY, width: slat.width, height: slat.height * 0.55)),
+                with: .linearGradient(
+                    Gradient(colors: [palette.wood.mix(with: .white, by: 0.25), palette.wood]),
+                    startPoint: CGPoint(x: 0, y: slat.minY), endPoint: CGPoint(x: 0, y: slat.minY + slat.height * 0.55))
+            )
+        }
+
+        // Diamond-plate kick plate.
+        let kick = CGRect(x: border, y: height * 0.86, width: width - border * 2, height: height * 0.1)
+        context.fill(Path(kick), with: .color(palette.woodShade.mix(with: .white, by: 0.15)))
+        context.drawLayer { layer in
+            layer.clip(to: Path(kick))
+            var y = kick.minY + 4
+            var row = 0
+            while y < kick.maxY {
+                var x = kick.minX + (row.isMultiple(of: 2) ? 0 : 7)
+                while x < kick.maxX {
+                    var dash = Path()
+                    let lean: CGFloat = row.isMultiple(of: 2) ? 1 : -1
+                    dash.move(to: CGPoint(x: x, y: y + 2 * lean))
+                    dash.addLine(to: CGPoint(x: x + 5, y: y - 2 * lean))
+                    layer.stroke(
+                        dash, with: .color(.white.opacity(0.35)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    x += 14
+                }
+                y += 7
+                row += 1
+            }
+        }
+    }
+
+    private func rivet(in context: inout GraphicsContext, at point: CGPoint, size: CGFloat) {
+        context.fill(
+            Path(ellipseIn: CGRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size)),
+            with: .radialGradient(
+                Gradient(colors: [.white.opacity(0.7), palette.wood, palette.woodShade]),
+                center: CGPoint(x: point.x - size * 0.2, y: point.y - size * 0.2), startRadius: 0, endRadius: size * 0.7
+            ))
     }
 
     // MARK: Parts
@@ -214,7 +410,7 @@ private struct DoorLeafPainter {
                 startPoint: CGPoint(x: field.minX, y: field.minY), endPoint: CGPoint(x: field.maxX, y: field.maxY)))
         WoodGrain.paint(
             in: &context, rect: field, color: palette.woodShade, seed: UInt32(rect.minX + rect.minY),
-            strength: palette.isPainted ? 0.2 : 1)
+            strength: palette.grainStrength * 0.8)
 
         var highlight = Path()
         highlight.move(to: CGPoint(x: rect.minX, y: rect.maxY))
@@ -264,15 +460,15 @@ private struct DoorLeafPainter {
                 MetalPainter.strap(
                     in: &context, from: CGPoint(x: fromHinge(0), y: y), length: length, thickness: thickness,
                     direction: hingeSide == .leading ? 1 : -1, palette: palette)
-            case .slab:
+            case .hatch:
                 let plate = CGRect(
                     x: hingeSide == .leading ? 0 : width - max(width * 0.025, 6),
                     y: y - height * DoorGeometry.hingeHeight * 0.4, width: max(width * 0.025, 6),
                     height: height * DoorGeometry.hingeHeight * 0.8)
                 MetalPainter.plate(in: &context, rect: plate, palette: palette, screws: false)
-            case .fourPanel, .glazed:
-                let plateWidth = max(width * 0.045, 10)
-                let plateHeight = height * DoorGeometry.hingeHeight
+            case .fourPanel, .glazed, .steel:
+                let plateWidth = max(width * (design == .steel ? 0.06 : 0.045), 10)
+                let plateHeight = height * DoorGeometry.hingeHeight * (design == .steel ? 1.2 : 1)
                 let plate = CGRect(
                     x: hingeSide == .leading ? 0 : width - plateWidth, y: y - plateHeight / 2, width: plateWidth,
                     height: plateHeight)
@@ -316,14 +512,41 @@ private struct DoorLeafPainter {
             MetalPainter.ring(
                 in: &context, rect: CGRect(x: x - ring / 2, y: latchY - plate * 0.45, width: ring, height: ring),
                 thickness: max(width * 0.018, 4), palette: palette)
-        case .slab:
-            // A long vertical bar.
-            let x = fromHinge(width * 0.86)
-            let length = height * 0.34
-            MetalPainter.bar(
-                in: &context,
-                rect: CGRect(x: x - width * 0.012, y: latchY - length / 2, width: width * 0.024, height: length),
+        case .hatch:
+            // A control pad: three lights and a small glowing screen.
+            let pad = CGRect(
+                x: fromHinge(width * 0.83) - width * 0.07, y: latchY - height * 0.07, width: width * 0.14,
+                height: height * 0.14)
+            context.drawLayer { layer in
+                layer.addFilter(.shadow(color: .black.opacity(0.45), radius: 3, x: 1, y: 2))
+                layer.fill(Path(roundedRect: pad, cornerRadius: pad.width * 0.2), with: .color(Color(white: 0.14)))
+            }
+            let screen = CGRect(
+                x: pad.minX + pad.width * 0.18, y: pad.minY + pad.height * 0.14, width: pad.width * 0.64,
+                height: pad.height * 0.26)
+            context.fill(
+                Path(roundedRect: screen, cornerRadius: 2), with: .color((palette.accent ?? .cyan).opacity(0.85)))
+            for (index, color) in [Color.green, .orange, .red].enumerated() {
+                let light = pad.width * 0.16
+                let x = pad.minX + pad.width * (0.22 + 0.28 * CGFloat(index)) - light / 2
+                let lamp = CGRect(x: x, y: pad.minY + pad.height * 0.6, width: light, height: light)
+                context.drawLayer { layer in
+                    layer.addFilter(.shadow(color: color.opacity(0.9), radius: 4))
+                    layer.fill(Path(ellipseIn: lamp), with: .color(color))
+                }
+            }
+        case .steel:
+            // A lever handle on a round rose, pointing back toward the hinges, with a keyhole below.
+            let x = fromHinge(width * 0.84)
+            let rose = width * 0.1
+            MetalPainter.knob(
+                in: &context, rect: CGRect(x: x - rose / 2, y: latchY - rose / 2, width: rose, height: rose),
                 palette: palette)
+            let lever = CGRect(
+                x: hingeSide == .leading ? x - width * 0.26 : x, y: latchY - width * 0.022, width: width * 0.26,
+                height: width * 0.044)
+            MetalPainter.lever(in: &context, rect: lever, palette: palette)
+            keyhole(in: &context, at: CGPoint(x: x, y: latchY + rose * 1.1))
         }
     }
 
@@ -419,6 +642,18 @@ enum MetalPainter {
                 with: .linearGradient(
                     gradient(palette), startPoint: CGPoint(x: rect.minX, y: rect.midY),
                     endPoint: CGPoint(x: rect.maxX, y: rect.midY)))
+        }
+    }
+
+    /// A horizontal lever arm with rounded ends.
+    static func lever(in context: inout GraphicsContext, rect: CGRect, palette: DoorPalette) {
+        context.drawLayer { layer in
+            layer.addFilter(.shadow(color: .black.opacity(0.5), radius: 3, x: 1, y: 3))
+            layer.fill(
+                Path(roundedRect: rect, cornerRadius: rect.height / 2),
+                with: .linearGradient(
+                    gradient(palette), startPoint: CGPoint(x: rect.midX, y: rect.minY),
+                    endPoint: CGPoint(x: rect.midX, y: rect.maxY)))
         }
     }
 

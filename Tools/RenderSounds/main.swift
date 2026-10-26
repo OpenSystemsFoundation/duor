@@ -136,6 +136,14 @@ try render(
     cues: [play(.knock, at: 0.05, volume: 0.9), play(.knock, at: 0.33), play(.knock, at: 0.58, volume: 0.85)])
 try render("knock-single", seconds: 0.6, cues: [play(.knock, at: 0.05)])
 try render("unlatch", seconds: 0.8, cues: [play(.unlatch, at: 0.05)])
+try render("airlock-unlatch", seconds: 1, cues: [play(.unlatch, at: 0.05)], profile: .spaceship)
+try render(
+    "spaceship-creak", seconds: 2.2, cues: swing(from: 0.1, duration: 1.3) { 120 * sin(.pi * $0 / 1.3) },
+    profile: .spaceship)
+try render("steel-slam", seconds: 1.6, cues: [play(.slam, at: 0.05)], profile: .steel)
+try render("steel-latch", seconds: 1.2, cues: [play(.latch, at: 0.05)], profile: .steel)
+try render(
+    "steel-creak", seconds: 2.2, cues: swing(from: 0.1, duration: 1.3) { 120 * sin(.pi * $0 / 1.3) }, profile: .steel)
 try render("latch-gentle", seconds: 0.9, cues: [play(.latch, at: 0.05, volume: 0.6)])
 try render("latch-firm", seconds: 0.9, cues: [play(.latch, at: 0.05, volume: 1)])
 try render("slam", seconds: 1.4, cues: [play(.slam, at: 0.05)])
@@ -159,7 +167,7 @@ try render(
 
 // Every door type: a knock and the full sequence.
 let doors: [(String, SoundProfile)] = [
-    ("oak", .oak), ("pine", .pine), ("barn", .barn), ("castle", .castle), ("modern", .modern),
+    ("oak", .oak), ("pine", .pine), ("barn", .barn), ("castle", .castle), ("spaceship", .spaceship), ("steel", .steel),
     ("oak-brass", SoundProfile.oak.with(metal: .brass)), ("oak-chrome", SoundProfile.oak.with(metal: .chrome)),
 ]
 for (name, profile) in doors {

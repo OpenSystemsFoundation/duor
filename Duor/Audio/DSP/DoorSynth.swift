@@ -164,22 +164,25 @@ private nonisolated struct SynthCore: Sendable {
                 modes: profile.knock, contactTime: random.value(in: touch.contact),
                 amplitude: 0.9 * volume, roughness: 0.2, detune: 0.03, pitchScale: pitch,
                 reverbSend: 0.3 + profile.room))
-        strike(
-            ImpactSpec(
-                modes: profile.knock, contactTime: 0.0002, amplitude: touch.snapLevel * volume,
-                roughness: 0.9, pitchScale: touch.snapPitch * pitch, decayScale: 0.3, reverbSend: 0.15))
+        if touch.snapLevel > 0 {
+            strike(
+                ImpactSpec(
+                    modes: profile.knock, contactTime: 0.0002, amplitude: touch.snapLevel * volume,
+                    roughness: 0.9, pitchScale: touch.snapPitch * pitch, decayScale: 0.3, reverbSend: 0.15))
+        }
         if touch.thump > 0 {
             strike(
                 ImpactSpec(
                     modes: profile.frame, contactTime: 0.006, amplitude: touch.thump * volume, roughness: 0.1,
                     decayScale: 0.7, reverbSend: 0.6))
         }
-        rattleGlass(profile.character.glassRattle * 0.12 * volume, after: 0.006)
+        // No glass on knocks: the panes only rattle when the door moves.
         clatterBoards(profile.character.looseBoards * 0.4 * volume, after: 0.006, count: 2)
     }
 
     /// Handle turns, bolt slides out of the strike plate.
     private mutating func unlatch(_ volume: Float) {
+        hiss(profile.character.airlockHiss * volume, after: 0.03, duration: 0.5)
         if profile.character.heavyBolt {
             // A big iron bolt dragged back: a low clank, a scrape, a second clank.
             strike(
@@ -207,6 +210,7 @@ private nonisolated struct SynthCore: Sendable {
     /// Door meets the frame, bolt rides the strike plate, then snaps into place.
     private mutating func latch(_ volume: Float) {
         if profile.character.softClose {
+            hiss(profile.character.airlockHiss * 0.8 * volume, after: 0.04, duration: 0.35)
             // The damper takes the speed out; a magnet catches the door.
             strike(ImpactSpec(modes: profile.frame, contactTime: 0.014, amplitude: 0.5 * volume, roughness: 0.05))
             strike(
@@ -274,6 +278,17 @@ private nonisolated struct SynthCore: Sendable {
         strike(ImpactSpec(modes: profile.hinge, contactTime: 0.0005, amplitude: 0.12 * volume, delay: 0.035))
         rattleGlass(profile.character.glassRattle * 0.3 * volume, after: 0.01)
         clatterBoards(profile.character.looseBoards * 0.3 * volume, after: 0.012, count: 2)
+    }
+
+    /// A pneumatic "pssshh": noise through broad high resonances, swelling and fading.
+    private mutating func hiss(_ level: Float, after delay: Float, duration: Float) {
+        guard level > 0.001 else { return }
+        // A long contact spreads the push thin, so scale up by its length.
+        let amplitude = level * duration * sampleRate / 400
+        strike(
+            ImpactSpec(
+                modes: SoundProfile.air, contactTime: duration, amplitude: amplitude, roughness: 1, delay: delay,
+                detune: 0.02, reverbSend: 0.4))
     }
 
     /// Window panes buzzing in their frame: quick, fading glass ticks.

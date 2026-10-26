@@ -6,7 +6,8 @@ enum DoorStyle: String, CaseIterable, Identifiable, Sendable {
     case cottage
     case barn
     case castle
-    case modern
+    case spaceship
+    case metal
 
     static let storageKey = "doorStyle"
 
@@ -18,7 +19,8 @@ enum DoorStyle: String, CaseIterable, Identifiable, Sendable {
         case .cottage: "Cottage"
         case .barn: "Barn"
         case .castle: "Castle"
-        case .modern: "Modern"
+        case .spaceship: "Spaceship"
+        case .metal: "Metal"
         }
     }
 
@@ -29,7 +31,8 @@ enum DoorStyle: String, CaseIterable, Identifiable, Sendable {
         case .cottage: .glazed
         case .barn: .planks
         case .castle: .studded
-        case .modern: .slab
+        case .spaceship: .hatch
+        case .metal: .steel
         }
     }
 
@@ -40,7 +43,8 @@ enum DoorStyle: String, CaseIterable, Identifiable, Sendable {
         case .cottage: .brass
         case .barn: .iron
         case .castle: .bronze
-        case .modern: .chrome
+        case .spaceship: .chrome
+        case .metal: .iron
         }
     }
 
@@ -51,49 +55,51 @@ enum DoorStyle: String, CaseIterable, Identifiable, Sendable {
         case .cottage: .beach
         case .barn: .forest
         case .castle: .greatHall
-        case .modern: .space
+        case .spaceship: .space
+        case .metal: .brickWall
         }
     }
 
-    /// Wood (or paint) and the color of the frame around it.
-    var surface: (wood: Color, shade: Color, frame: Color, isPainted: Bool) {
+    /// What the leaf is made of, and the color of the frame around it.
+    var surface: DoorSurface {
         switch self {
         case .oak:
-            (
-                Color(red: 0.55, green: 0.33, blue: 0.18), Color(red: 0.38, green: 0.21, blue: 0.10),
-                Color(red: 0.92, green: 0.89, blue: 0.84), false
-            )
+            DoorSurface(
+                main: Color(red: 0.55, green: 0.33, blue: 0.18), shade: Color(red: 0.38, green: 0.21, blue: 0.10),
+                frame: Color(red: 0.92, green: 0.89, blue: 0.84), finish: .wood)
         case .cottage:
-            (
-                Color(red: 0.45, green: 0.58, blue: 0.48), Color(red: 0.30, green: 0.42, blue: 0.34),
-                Color(red: 0.96, green: 0.94, blue: 0.90), true
-            )
+            DoorSurface(
+                main: Color(red: 0.45, green: 0.58, blue: 0.48), shade: Color(red: 0.30, green: 0.42, blue: 0.34),
+                frame: Color(red: 0.96, green: 0.94, blue: 0.90), finish: .paint)
         case .barn:
-            (
-                Color(red: 0.55, green: 0.44, blue: 0.34), Color(red: 0.33, green: 0.25, blue: 0.19),
-                Color(red: 0.42, green: 0.33, blue: 0.26), false
-            )
+            DoorSurface(
+                main: Color(red: 0.55, green: 0.44, blue: 0.34), shade: Color(red: 0.33, green: 0.25, blue: 0.19),
+                frame: Color(red: 0.42, green: 0.33, blue: 0.26), finish: .wood)
         case .castle:
-            (
-                Color(red: 0.34, green: 0.22, blue: 0.13), Color(red: 0.18, green: 0.11, blue: 0.06),
-                Color(red: 0.55, green: 0.53, blue: 0.50), false
-            )
-        case .modern:
-            (
-                Color(red: 0.88, green: 0.83, blue: 0.74), Color(red: 0.74, green: 0.67, blue: 0.56),
-                Color(red: 0.97, green: 0.97, blue: 0.96), false
-            )
+            DoorSurface(
+                main: Color(red: 0.34, green: 0.22, blue: 0.13), shade: Color(red: 0.18, green: 0.11, blue: 0.06),
+                frame: Color(red: 0.55, green: 0.53, blue: 0.50), finish: .wood)
+        case .spaceship:
+            DoorSurface(
+                main: Color(red: 0.86, green: 0.88, blue: 0.92), shade: Color(red: 0.58, green: 0.62, blue: 0.69),
+                frame: Color(red: 0.28, green: 0.31, blue: 0.36), finish: .paint,
+                accent: Color(red: 0.3, green: 0.9, blue: 1))
+        case .metal:
+            DoorSurface(
+                main: Color(red: 0.56, green: 0.59, blue: 0.62), shade: Color(red: 0.33, green: 0.35, blue: 0.38),
+                frame: Color(red: 0.42, green: 0.43, blue: 0.44), finish: .metal)
         }
     }
 
-    /// The wood's sound, before hardware.
+    /// The door's sound, before hardware.
     var baseSound: SoundProfile {
         switch self {
         case .oak: .oak
         case .cottage: .pine
         case .barn: .barn
         case .castle: .castle
-        case .modern: .modern
+        case .spaceship: .spaceship
+        case .metal: .steel
         }
     }
 }
@@ -108,8 +114,29 @@ enum DoorDesign: Sendable {
     case planks
     /// Heavy boards with iron bands, studs and a ring pull.
     case studded
-    /// A flat slab with a long bar handle.
-    case slab
+    /// A spaceship hatch: hull panels, a porthole, light strips and a control pad.
+    case hatch
+    /// A riveted steel door with a vent and a lever handle.
+    case steel
+}
+
+/// What a door's surface is.
+enum SurfaceFinish: Sendable {
+    /// Grain shows.
+    case wood
+    /// Paint hides most of the grain.
+    case paint
+    /// Brushed metal instead of grain.
+    case metal
+}
+
+struct DoorSurface: Sendable {
+    var main: Color
+    var shade: Color
+    var frame: Color
+    var finish: SurfaceFinish
+    /// Glowing trim (light strips), if the door has any.
+    var accent: Color?
 }
 
 /// The metal of the hinges, handle and strike plate.
@@ -200,8 +227,8 @@ struct DoorLook: Equatable, Sendable {
     var palette: DoorPalette {
         let surface = style.surface
         return DoorPalette(
-            wood: surface.wood, woodShade: surface.shade, metal: hardware.color, metalShine: hardware.shine,
-            frame: surface.frame, isPainted: surface.isPainted)
+            wood: surface.main, woodShade: surface.shade, metal: hardware.color, metalShine: hardware.shine,
+            frame: surface.frame, finish: surface.finish, accent: surface.accent)
     }
 
     var soundProfile: SoundProfile {
@@ -216,6 +243,16 @@ struct DoorPalette: Sendable {
     /// 0...1: how strongly highlights show on the metal.
     var metalShine: Double
     var frame: Color
-    /// Paint hides most of the grain.
-    var isPainted: Bool
+    var finish: SurfaceFinish
+    /// Glowing trim, if any.
+    var accent: Color?
+
+    /// How much wood grain shows.
+    var grainStrength: Double {
+        switch finish {
+        case .wood: 1
+        case .paint: 0.25
+        case .metal: 0
+        }
+    }
 }

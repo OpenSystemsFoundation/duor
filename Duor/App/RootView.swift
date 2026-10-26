@@ -13,12 +13,30 @@ struct RootView: View {
     private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
 
     var body: some View {
+        // A navigation stack only for its toolbar: on the iPhone Duo the settings button then
+        // lives in the system's vertical control lane on the trailing edge.
+        NavigationStack {
+            door
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Settings", systemImage: "gearshape") {
+                            isShowingSettings = true
+                        }
+                    }
+                    .axisBehavior(.verticalPreferred)
+                }
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private var door: some View {
         GeometryReader { proxy in
             let showsInside = showsInside(proxy)
             let turns = DeviceFixedTurns.quarterTurns(
                 screen: proxy.size, isInnerDisplay: showsInside && controller.hasHardwareHinge,
-                device: deviceOrientation.orientation)
-            ZStack(alignment: .topTrailing) {
+                landscape: deviceOrientation.lastLandscape)
+            ZStack {
                 DeviceFixed(quarterTurns: turns) { _, crease in
                     if showsInside {
                         DoorInsideView(
@@ -29,13 +47,6 @@ struct RootView: View {
                     }
                 }
                 .transition(.opacity)
-
-                Button("Settings", systemImage: "gearshape") {
-                    isShowingSettings = true
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.glass)
-                .padding()
             }
             .animation(.easeInOut(duration: 0.2), value: showsInside)
         }
@@ -58,7 +69,10 @@ struct RootView: View {
             }
         }
         .sheet(isPresented: $isShowingSettings) {
-            SettingsView(style: $style, hardware: $hardware, scene: $scene)
+            // Unfolded: the hinge is open well past halfway (folded or no hinge: four tiles per row).
+            SettingsView(
+                style: $style, hardware: $hardware, scene: $scene,
+                isUnfolded: controller.hasHardwareHinge && controller.angle > 100)
         }
         // Paused while Settings is open so browsing doesn't creak.
         .onHingeChange(isEnabled: !isShowingSettings) { _, newContext in

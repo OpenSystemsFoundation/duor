@@ -64,10 +64,7 @@
     "Living room" : {
 
     },
-    "Modern" : {
-
-    },
-    "Nice try." : {
+    "Metal" : {
 
     },
     "No hinge detected. Drag to open the door." : {
@@ -86,6 +83,9 @@
 
     },
     "Settings" : {
+
+    },
+    "Spaceship" : {
 
     }
   },

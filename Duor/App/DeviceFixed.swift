@@ -4,11 +4,10 @@ import UIKit
 /// Lays content out in the device's own portrait frame and counter-rotates it when the system
 /// rotates the interface, so the door stays fixed to the hardware.
 ///
-/// The app asks for portrait only, but on the iPhone Duo's inner display the system rotates the
-/// interface anyway. The hinge is physical, so the door must not turn with the interface.
-/// `UIRequiresFullScreen` (Info.plist) stops the system from animating that rotation: without it
-/// the whole window visibly spins through 90° and back. It's deprecated since iOS 26; if a future
-/// iOS ignores it, the spin returns but the door still ends up in the right place.
+/// The interface orientation is normally locked (`DoorHostingController`), but the lock holds
+/// whatever orientation the app was in, and the system lifts it in some layouts. Whenever the
+/// interface ends up turned relative to the device, this turns the door back so it stays fixed
+/// to the hardware.
 struct DeviceFixed<Content: View>: View {
     /// Clockwise quarter turns that undo the interface rotation. See `DeviceFixedTurns`.
     let quarterTurns: Int
@@ -46,11 +45,13 @@ enum DeviceFixedTurns {
     /// Each screen has a known shape when the device is upright: the inner display is wide (the
     /// book posture), the cover display is tall. If the screen's current shape differs, the system
     /// rotated the interface, and the physical device orientation says which way.
-    static func quarterTurns(screen: CGSize, isInnerDisplay: Bool, device: UIDeviceOrientation) -> Int {
+    /// - Parameter landscape: The last landscape orientation the device was in. The interface can only
+    ///   have turned to one of these, and if it's locked there, the device may since have turned back.
+    static func quarterTurns(screen: CGSize, isInnerDisplay: Bool, landscape: UIDeviceOrientation) -> Int {
         let isWide = screen.width > screen.height
         guard isWide != isInnerDisplay else { return 0 }
         // The interface turned to stay upright for the user; turn the door back the other way.
-        return device == .landscapeRight ? 1 : -1
+        return landscape == .landscapeRight ? 1 : -1
     }
 }
 
@@ -58,6 +59,8 @@ enum DeviceFixedTurns {
 @Observable
 final class DeviceOrientationMonitor {
     private(set) var orientation: UIDeviceOrientation = .portrait
+    /// The most recent landscape orientation (`.landscapeLeft` until the device has been in one).
+    private(set) var lastLandscape: UIDeviceOrientation = .landscapeLeft
     @ObservationIgnored private var observation: Task<Void, Never>?
 
     func start() {
@@ -74,5 +77,6 @@ final class DeviceOrientationMonitor {
     private func update(_ newValue: UIDeviceOrientation) {
         guard newValue.isPortrait || newValue.isLandscape else { return }
         orientation = newValue
+        if newValue.isLandscape { lastLandscape = newValue }
     }
 }

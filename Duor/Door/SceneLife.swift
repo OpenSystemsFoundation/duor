@@ -8,17 +8,22 @@ import SwiftUI
 /// - **Visitors:** someone passing by now and then (a cat, a knight, a seagull, a UFO…).
 ///   Visits are a pure function of time: each period gets a random start, direction and lane
 ///   from a seed, so nothing has to be stored and every frame is cheap to compute.
+///
+/// With `catLovers` on, every scene also gets a cat with a little story (see `SceneCats.swift`).
 enum SceneLife {
-    static func paint(_ scene: InsideScene, in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
+    static func paint(
+        _ scene: InsideScene, in context: inout GraphicsContext, rect: CGRect, time: TimeInterval,
+        catLovers: Bool = false
+    ) {
         context.drawLayer { layer in
             layer.clip(to: Path(rect))
             switch scene {
             case .livingRoom: livingRoom(in: &layer, rect: rect, time: time)
-            case .greatHall: greatHall(in: &layer, rect: rect, time: time)
-            case .beach: beach(in: &layer, rect: rect, time: time)
-            case .forest: forest(in: &layer, rect: rect, time: time)
-            case .space: space(in: &layer, rect: rect, time: time)
-            case .brickWall: brickWall(in: &layer, rect: rect, time: time)
+            case .greatHall: greatHall(in: &layer, rect: rect, time: time, catLovers: catLovers)
+            case .beach: beach(in: &layer, rect: rect, time: time, catLovers: catLovers)
+            case .forest: forest(in: &layer, rect: rect, time: time, catLovers: catLovers)
+            case .space: space(in: &layer, rect: rect, time: time, catLovers: catLovers)
+            case .brickWall: brickWall(in: &layer, rect: rect, time: time, catLovers: catLovers)
             }
         }
     }
@@ -71,7 +76,7 @@ enum SceneLife {
                 let leaving = p > 0.75
                 let facing: CGFloat = (fromLeft != leaving) ? 1 : -1
                 critter(in: &context, at: CGPoint(x: x, y: spot.y), facing: facing) {
-                    cat(in: &$0, size: size, time: time, walking: p < 0.25 || p > 0.75)
+                    cat(in: &$0, size: size, time: time, pose: p < 0.25 || p > 0.75 ? .walk : .stand)
                 }
             } else {
                 let spot = floorSpot(distance: visit.variant == 0 ? 0.1 * visit.lane : 0.65 + 0.3 * visit.lane)
@@ -93,9 +98,15 @@ enum SceneLife {
         }
     }
 
-    private static func greatHall(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
+    private static func greatHall(
+        in context: inout GraphicsContext, rect: CGRect, time: TimeInterval, catLovers: Bool
+    ) {
         for (index, point) in torchPositions(in: rect).enumerated() {
             flame(in: &context, at: point, size: rect.width * 0.07, time: time + Double(index) * 1.7)
+        }
+        // A cat guard on patrol, at the back of the hall.
+        if catLovers {
+            catOnPatrol(in: &context, rect: rect, time: time)
         }
         // A small knight on patrol.
         if let visit = visit(time: time, period: 13, duration: 7, salt: 2) {
@@ -116,7 +127,7 @@ enum SceneLife {
         }
     }
 
-    private static func beach(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
+    private static func beach(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval, catLovers: Bool) {
         let horizon = rect.minY + rect.height * 0.5
         let shore = rect.minY + rect.height * 0.66
         // Clouds of different shapes, drifting slowly at their own speeds.
@@ -181,6 +192,10 @@ enum SceneLife {
             let x = visit.x(in: rect, margin: size * 2)
             sharkFin(in: &context, at: CGPoint(x: x, y: water + sin(time * 2) * 1.2), size: size, facing: visit.facing)
         }
+        // A cat comes to sunbathe.
+        if catLovers {
+            catOnTheBeach(in: &context, rect: rect, time: time)
+        }
         // A crab scuttles sideways across the sand.
         if let visit = visit(time: time, period: 14, duration: 5, salt: 6) {
             let size = rect.width * 0.12
@@ -192,7 +207,7 @@ enum SceneLife {
         }
     }
 
-    private static func forest(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
+    private static func forest(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval, catLovers: Bool) {
         // Leaves drifting down.
         for index in 0..<4 {
             let fall = 7.0 + Double(index)
@@ -261,8 +276,10 @@ enum SceneLife {
                 }
             }
         }
-        // A rabbit hops across the grass.
-        if let visit = visit(time: time, period: 12, duration: 4, salt: 8) {
+        // A rabbit hops across the grass. For cat lovers, it stops to nibble and a cat stalks it.
+        if catLovers {
+            catChasingRabbit(in: &context, rect: rect, time: time)
+        } else if let visit = visit(time: time, period: 12, duration: 4, salt: 8) {
             let size = rect.width * 0.14
             let x = visit.x(in: rect, margin: size)
             let hop = abs(sin(time * 7)) * size * 0.35
@@ -272,7 +289,7 @@ enum SceneLife {
         }
     }
 
-    private static func space(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
+    private static func space(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval, catLovers: Bool) {
         // Twinkling stars.
         var random = NoiseSource(seed: 99)
         for _ in 0..<26 {
@@ -319,9 +336,15 @@ enum SceneLife {
                 astronaut(in: &layer, size: size)
             }
         }
+        // A cat in a space helmet floats by.
+        if catLovers {
+            catInSpace(in: &context, rect: rect, time: time)
+        }
     }
 
-    private static func brickWall(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
+    private static func brickWall(
+        in context: inout GraphicsContext, rect: CGRect, time: TimeInterval, catLovers: Bool
+    ) {
         // A spider lowers itself down to say hi, then climbs back up.
         if let visit = visit(time: time, period: 12, duration: 6, salt: 12) {
             let size = rect.width * 0.08
@@ -344,6 +367,10 @@ enum SceneLife {
             critter(in: &context, at: CGPoint(x: x, y: rect.maxY - 2), facing: visit.facing) {
                 snail(in: &$0, size: size, time: time)
             }
+        }
+        // A cat pounces on a mouse hole. The mouse was in the other one.
+        if catLovers {
+            catAtTheWall(in: &context, rect: rect, time: time)
         }
     }
 
@@ -382,7 +409,7 @@ enum SceneLife {
     }
 
     /// Draws a critter in its own coordinates: origin at its feet, facing right (mirrored if not).
-    private static func critter(
+    static func critter(
         in context: inout GraphicsContext, at point: CGPoint, facing: CGFloat, draw: (inout GraphicsContext) -> Void
     ) {
         context.drawLayer { layer in
@@ -393,72 +420,6 @@ enum SceneLife {
     }
 
     // MARK: Critters (origin at the feet, facing right)
-
-    private static func cat(in context: inout GraphicsContext, size: CGFloat, time: TimeInterval, walking: Bool = true)
-    {
-        let fur = Color(red: 0.93, green: 0.6, blue: 0.27)
-        let dark = Color(red: 0.75, green: 0.42, blue: 0.16)
-        let step = walking ? time * 9 : 0
-        let bob = CGFloat(abs(sin(step))) * size * 0.02
-        // Legs: front and back pairs swing in opposition.
-        for (x, phase) in [(0.28, 0.0), (0.18, .pi), (-0.28, .pi), (-0.38, 0.0)] as [(CGFloat, Double)] {
-            var leg = Path()
-            leg.move(to: CGPoint(x: x * size, y: -size * 0.3))
-            leg.addLine(to: CGPoint(x: x * size + CGFloat(sin(step + phase)) * size * 0.07, y: 0))
-            context.stroke(leg, with: .color(dark), style: StrokeStyle(lineWidth: size * 0.07, lineCap: .round))
-        }
-        // Tail, curling and swishing.
-        var tail = Path()
-        tail.move(to: CGPoint(x: -size * 0.45, y: -size * 0.42 - bob))
-        tail.addQuadCurve(
-            to: CGPoint(x: -size * 0.62 + CGFloat(sin(time * 3)) * size * 0.06, y: -size * 0.85),
-            control: CGPoint(x: -size * 0.75, y: -size * 0.45))
-        context.stroke(tail, with: .color(fur), style: StrokeStyle(lineWidth: size * 0.07, lineCap: .round))
-        // Body and head.
-        context.fill(
-            Path(ellipseIn: CGRect(x: -size * 0.5, y: -size * 0.58 - bob, width: size, height: size * 0.36)),
-            with: .color(fur))
-        for stripe in [-0.25, -0.05, 0.15] as [CGFloat] {
-            context.fill(
-                Path(
-                    roundedRect: CGRect(
-                        x: stripe * size, y: -size * 0.58 - bob, width: size * 0.06, height: size * 0.14),
-                    cornerRadius: 2),
-                with: .color(dark))
-        }
-        // Neck joins the front of the body to the head, which overlaps the body slightly.
-        context.fill(
-            Path(ellipseIn: CGRect(x: size * 0.26, y: -size * 0.62 - bob, width: size * 0.24, height: size * 0.26)),
-            with: .color(fur))
-        let head = CGPoint(x: size * 0.43, y: -size * 0.63 - bob)
-        let headRadius = size * 0.17
-        for ear in [-1.0, 1.0] as [CGFloat] {
-            var triangle = Path()
-            triangle.move(to: CGPoint(x: head.x + ear * headRadius * 0.85, y: head.y - headRadius * 0.4))
-            triangle.addLine(to: CGPoint(x: head.x + ear * headRadius * 0.6, y: head.y - headRadius * 1.35))
-            triangle.addLine(to: CGPoint(x: head.x + ear * headRadius * 0.05, y: head.y - headRadius * 0.8))
-            triangle.closeSubpath()
-            context.fill(triangle, with: .color(fur))
-        }
-        context.fill(
-            Path(
-                ellipseIn: CGRect(
-                    x: head.x - headRadius, y: head.y - headRadius, width: headRadius * 2, height: headRadius * 1.9)),
-            with: .color(fur))
-        // Blinks every few seconds.
-        let blink = time.truncatingRemainder(dividingBy: 3.7) < 0.15
-        for eye in [-0.35, 0.4] as [CGFloat] {
-            let eyeRect = CGRect(
-                x: head.x + eye * headRadius - size * 0.02, y: head.y - size * 0.03, width: size * 0.04,
-                height: blink ? size * 0.008 : size * 0.05)
-            context.fill(Path(ellipseIn: eyeRect), with: .color(.black))
-        }
-        context.fill(
-            Path(
-                ellipseIn: CGRect(
-                    x: head.x + headRadius * 0.7, y: head.y + size * 0.02, width: size * 0.04, height: size * 0.03)),
-            with: .color(Color(red: 0.9, green: 0.45, blue: 0.5)))
-    }
 
     /// A beagle-ish dog: floppy ears, a wagging tail, tongue out.
     private static func dog(in context: inout GraphicsContext, size: CGFloat, time: TimeInterval) {
@@ -974,7 +935,7 @@ enum SceneLife {
         }
     }
 
-    private static func rabbit(in context: inout GraphicsContext, size: CGFloat) {
+    static func rabbit(in context: inout GraphicsContext, size: CGFloat) {
         let fur = Color(red: 0.78, green: 0.66, blue: 0.54)
         context.fill(
             Path(ellipseIn: CGRect(x: -size * 0.4, y: -size * 0.4, width: size * 0.6, height: size * 0.4)),

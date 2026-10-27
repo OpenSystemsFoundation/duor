@@ -8,6 +8,8 @@ import SwiftUI
 struct DoorwayArt: View {
     let look: DoorLook
     var light: Double
+    /// Add a cat to the scene.
+    var catLovers = false
 
     var body: some View {
         // Three layers: the still scene, its moving life (passing behind the frame), then the
@@ -21,7 +23,7 @@ struct DoorwayArt: View {
                 Canvas { context, size in
                     SceneLife.paint(
                         look.scene, in: &context, rect: Self.opening(in: size),
-                        time: timeline.date.timeIntervalSinceReferenceDate)
+                        time: timeline.date.timeIntervalSinceReferenceDate, catLovers: catLovers)
                 }
             }
             Canvas { context, size in

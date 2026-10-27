@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Pick the door, its hardware, and what's behind it.
+/// Pick the door, its hardware, what's behind it, and whether a cat lives there.
 struct SettingsView: View {
     @Binding var style: DoorStyle
     @Binding var hardware: HardwareFinish
     @Binding var scene: InsideScene
+    @Binding var catLovers: Bool
     /// Unfolded there's room for every tile in one row; folded, at most four per row.
     var isUnfolded = false
     @Environment(\.dismiss) private var dismiss
@@ -51,6 +52,12 @@ struct SettingsView: View {
                     } onSelect: { newScene in
                         scene = newScene
                     }
+                }
+
+                Section {
+                    Toggle("Cat lovers", systemImage: "cat", isOn: $catLovers)
+                } footer: {
+                    Text("A cat joins every scene behind the door, each one up to something different.")
                 }
             }
             .navigationTitle("Settings")
@@ -148,5 +155,6 @@ private struct MetalSwatch: View {
 }
 
 #Preview {
-    SettingsView(style: .constant(.cottage), hardware: .constant(.brass), scene: .constant(.beach))
+    SettingsView(
+        style: .constant(.cottage), hardware: .constant(.brass), scene: .constant(.beach), catLovers: .constant(true))
 }

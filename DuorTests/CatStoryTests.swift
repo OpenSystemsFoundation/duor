@@ -97,15 +97,17 @@ struct CatStoryTests {
         #expect(middle.lift > 0.5)
     }
 
-    @Test func mouseAppearsOnlyAfterTheCatLandsAndRunsTheOtherWay() throws {
-        #expect(CatStory.mouse(at: CatStory.pounceLanding) == nil)
-        let start = try #require(CatStory.mouse(at: CatStory.mouseAppears))
-        let later = try #require(CatStory.mouse(at: CatStory.mouseAppears + 0.5))
-        #expect(start == CatStory.mouseHoles[0])
-        #expect(later < start)
-        // The cat jumped away from it: the mouse is behind the cat.
-        let cat = try #require(CatStory.pounce(at: CatStory.mouseAppears))
-        #expect(cat.across > start)
+    @Test func leapUncoversTheMouseWhichRunsTheOtherWayOnceTheCatLands() throws {
+        #expect(CatStory.mouse(at: CatStory.pounceTakeoff - 0.01) == nil)
+        // It was right behind the cat, and freezes while the cat is in the air.
+        let cat = try #require(CatStory.pounce(at: CatStory.pounceTakeoff))
+        let uncovered = try #require(CatStory.mouse(at: CatStory.pounceTakeoff))
+        #expect(uncovered < cat.across)
+        #expect(cat.across - uncovered < 0.15)
+        #expect(CatStory.mouse(at: CatStory.mouseBolts) == uncovered)
+        #expect(CatStory.mouseBolts > CatStory.pounceLanding)
+        let later = try #require(CatStory.mouse(at: CatStory.mouseBolts + 0.5))
+        #expect(later < uncovered)
     }
 
     @Test func catWatchesTheMouseGetAway() {

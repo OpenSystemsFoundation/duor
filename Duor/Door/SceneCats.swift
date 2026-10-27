@@ -64,12 +64,8 @@ extension SceneLife {
         }
     }
 
-    /// At the brick wall: two mouse holes, a pounce on the wrong one, and a mouse getting away.
+    /// At the brick wall: a pounce on nothing, and the mouse that was right behind the cat.
     static func catAtTheWall(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
-        for across in CatStory.mouseHoles {
-            let bottom = CGPoint(x: rect.minX + rect.width * across, y: rect.maxY)
-            mouseHole(in: &context, at: bottom, width: rect.width * 0.08)
-        }
         let duration = CatStory.pounceDuration
         guard let visit = Self.visit(time: time, period: 20, duration: duration, salt: 22) else { return }
         let t = visit.progress * duration
@@ -80,7 +76,7 @@ extension SceneLife {
                 in: &context, at: CGPoint(x: sceneX(across, in: rect, facing: visit.facing), y: ground),
                 facing: -visit.facing
             ) {
-                mouse(in: &$0, size: rect.width * 0.09, time: time)
+                mouse(in: &$0, size: rect.width * 0.09, time: time, running: t >= CatStory.mouseBolts)
             }
         }
         if let frame = CatStory.pounce(at: t) {
@@ -457,11 +453,11 @@ extension SceneLife {
             with: .color(.white.opacity(0.7)))
     }
 
-    /// A little grey mouse, running flat out.
-    private static func mouse(in context: inout GraphicsContext, size: CGFloat, time: TimeInterval) {
+    /// A little grey mouse, running flat out (or frozen to the spot).
+    private static func mouse(in context: inout GraphicsContext, size: CGFloat, time: TimeInterval, running: Bool) {
         let grey = Color(white: 0.58)
         let pink = Color(red: 0.95, green: 0.65, blue: 0.68)
-        let scurry = CGFloat(sin(time * 40)) * size * 0.05
+        let scurry = running ? CGFloat(sin(time * 40)) * size * 0.05 : 0
         var tail = Path()
         tail.move(to: CGPoint(x: -size * 0.4, y: -size * 0.12))
         tail.addQuadCurve(
@@ -492,14 +488,5 @@ extension SceneLife {
         context.fill(
             Path(ellipseIn: CGRect(x: size * 0.52, y: -size * 0.26, width: size * 0.07, height: size * 0.06)),
             with: .color(pink))
-    }
-
-    /// An arched hole at the foot of the wall. `bottom` is the middle of its base.
-    private static func mouseHole(in context: inout GraphicsContext, at bottom: CGPoint, width: CGFloat) {
-        let hole = Path(
-            roundedRect: CGRect(x: bottom.x - width / 2, y: bottom.y - width * 0.75, width: width, height: width),
-            cornerRadius: width / 2)
-        context.fill(hole, with: .color(Color(white: 0.06)))
-        context.stroke(hole, with: .color(.black.opacity(0.4)), lineWidth: 2)
     }
 }

@@ -116,20 +116,20 @@ enum CatStory {
 
     // MARK: Brick wall
 
-    /// The two mouse holes at the foot of the wall, near each side (fractions of the width).
-    static let mouseHoles = [0.2, 0.8]
+    /// Where the mouse hides: right behind the spot the cat leaps from (fraction of the width).
+    static let mouseSpot = 0.2
 
     static let pounceDuration = 9.0
     /// When the cat leaves the ground, and when it lands.
     static let pounceTakeoff = 4.1
     static let pounceLanding = 4.9
-    /// When the mouse pops out of the hole behind the cat.
-    static let mouseAppears = 5.2
+    /// When the mouse makes a run for it, once the cat has landed.
+    static let mouseBolts = 5.2
 
-    /// The cat walks up to the mouse hole on its side, has a good look around, wiggles, and
-    /// leaps across to pounce on the hole on the other side. The mouse was behind it all along:
-    /// it pops out of the hole the cat jumped from and runs off that way. The cat looks back,
-    /// then walks off with as much dignity as it has left.
+    /// The cat walks along the wall, has a good look around, wiggles, and pounces on something
+    /// across the way. The mouse was right behind it all along: the leap uncovers it, it freezes,
+    /// and once the cat lands it runs off the way the cat came. The cat looks back, then walks
+    /// off with as much dignity as it has left.
     static func pounce(at t: Double) -> CatFrame? {
         let margin = 0.3
         let speed = 1.0 / 3
@@ -162,11 +162,12 @@ enum CatStory {
         }
     }
 
-    /// Where the mouse is (same measure as `CatFrame.across`): out of the hole on the side the
-    /// cat jumped from, and away off that edge.
+    /// Where the mouse is (same measure as `CatFrame.across`). It only shows once the cat leaps
+    /// off it (before that the cat hides it), sits frozen while the cat is in the air, then runs
+    /// away off the edge the cat came from.
     static func mouse(at t: Double) -> Double? {
-        guard t >= mouseAppears else { return nil }
-        let across = mouseHoles[0] - (t - mouseAppears) * 0.3
+        guard t >= pounceTakeoff else { return nil }
+        let across = mouseSpot - max(t - mouseBolts, 0) * 0.15
         return across > -0.15 ? across : nil
     }
 }

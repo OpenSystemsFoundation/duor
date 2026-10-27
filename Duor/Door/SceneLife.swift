@@ -254,7 +254,7 @@ enum SceneLife {
                         size: size, time: time)
                 }
             }
-            ForestLayout.paintBush(bush, in: &context)
+            ForestLayout.paintBush(bush, in: &context, shadow: false)
             if runsAway, p >= 0.45 {
                 let run = CGFloat((p - 0.45) / 0.55)
                 let runner = bush.size * 0.7
@@ -368,7 +368,7 @@ enum SceneLife {
                 snail(in: &$0, size: size, time: time)
             }
         }
-        // A cat pounces on a mouse hole. The mouse was in the other one.
+        // A cat pounces on a mouse. The mouse was right behind it.
         if catLovers {
             catAtTheWall(in: &context, rect: rect, time: time)
         }

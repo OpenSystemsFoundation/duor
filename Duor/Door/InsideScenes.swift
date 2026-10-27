@@ -1159,15 +1159,27 @@ enum ForestLayout {
     /// The bush the deer hides behind.
     static func deerBush(in rect: CGRect) -> Bush { bushes(in: rect)[0] }
 
-    static func paintBush(_ bush: Bush, in context: inout GraphicsContext) {
+    /// `shadow` is off when repainting a bush over the still scene, which already has its shadow
+    /// (painting it twice would darken it).
+    static func paintBush(_ bush: Bush, in context: inout GraphicsContext, shadow: Bool = true) {
         var random = NoiseSource(seed: bush.seed)
         // Shadow on the ground, then dark inner leaves, then lit leaves on top.
+        if shadow {
+            context.fill(
+                Path(
+                    ellipseIn: CGRect(
+                        x: bush.center.x - bush.size * 0.55, y: bush.center.y - bush.size * 0.06,
+                        width: bush.size * 1.1, height: bush.size * 0.18)),
+                with: .color(.black.opacity(0.25)))
+        }
+        // A low clump filling out the bottom-left corner, so the leaves cover the shadow there.
+        let clump = bush.size * 0.22
         context.fill(
             Path(
                 ellipseIn: CGRect(
-                    x: bush.center.x - bush.size * 0.55, y: bush.center.y - bush.size * 0.06, width: bush.size * 1.1,
-                    height: bush.size * 0.18)),
-            with: .color(.black.opacity(0.25)))
+                    x: bush.center.x - bush.size * 0.34 - clump, y: bush.center.y - bush.size * 0.02 - clump,
+                    width: clump * 2, height: clump * 1.8)),
+            with: .color(Color(red: 0.11, green: 0.24, blue: 0.11)))
         let layers: [(Color, Int, ClosedRange<Float>, CGFloat)] = [
             (Color(red: 0.11, green: 0.24, blue: 0.11), 9, 0.2...0.3, 0),
             (Color(red: 0.18, green: 0.34, blue: 0.15), 8, 0.14...0.22, -0.05),

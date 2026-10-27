@@ -1,11 +1,13 @@
 import SwiftUI
 
-/// The outside face of the door, shown on the cover display while folded. Tap to knock.
+/// The outside face of the door, shown while it's shut. Tap to knock. (Swiping to open is
+/// handled by `RootView`, since this view is swapped out as the door opens.)
 struct DoorOutsideView: View {
     let look: DoorLook
     /// Latest door feedback, for the knock and close shakes.
     let feedback: DoorFeedback?
     let onKnock: () -> Void
+    var onOpen: () -> Void = {}
 
     @State private var dents: [KnockDent] = []
 
@@ -47,9 +49,10 @@ struct DoorOutsideView: View {
             .environment(\.layoutDirection, .leftToRight)
             .accessibilityElement()
             .accessibilityLabel(Text("Closed door"))
-            .accessibilityHint(Text("Double-tap to knock. Unfold your phone to open the door."))
+            .accessibilityHint(Text("Double-tap to knock."))
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { onKnock() }
+            .accessibilityAction(named: Text("Open door"), onOpen)
     }
 
     private func knock(at location: CGPoint) {

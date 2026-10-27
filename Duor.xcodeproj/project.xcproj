@@ -29,6 +29,7 @@
           "children": [
             { "path": "DoorController.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorMotionInterpreter.swift", "target-membership": [ "Duor/compile-sources" ] },
+            { "path": "DoorSwipe.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorStyle.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorArt.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorwayArt.swift", "target-membership": [ "Duor/compile-sources" ] },
@@ -85,6 +86,7 @@
       "path": "DuorTests",
       "children": [
         { "path": "DoorMotionInterpreterTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
+        { "path": "DoorSwipeTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "DoorSynthTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "CatStoryTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
       ],

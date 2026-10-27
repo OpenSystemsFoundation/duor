@@ -11,7 +11,7 @@ Pick from six doors (oak, cottage, barn, castle, spaceship, metal), five hardwar
 ## Requirements
 
 - Xcode 27.1+ (iOS 27.1 SDK)
-- iPhone Duo or the iPhone Duo simulator. Other iPhones get an on-screen hinge slider.
+- iPhone Duo or the iPhone Duo simulator. On other iPhones (and on the folded Duo) you swipe the door open and shut.
 
 ## Getting started
 

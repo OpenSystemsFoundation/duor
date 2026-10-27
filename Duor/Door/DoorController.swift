@@ -15,24 +15,32 @@ struct DoorFeedback: Equatable {
     var id: Int
 }
 
-/// Owns door state. Feeds hinge samples to the interpreter and turns events into sound and feedback.
+/// Owns door state. The door is moved by the hinge or by swiping (see `DoorDrive`); its angle is
+/// fed to the interpreter, whose events become sound and feedback.
 @Observable
 final class DoorController {
-    /// Latest hinge sample, real or simulated.
-    private(set) var reading: HingeReading?
+    /// Latest sample from the real hinge.
+    private(set) var hinge: HingeReading?
     /// True once the system has delivered a real hinge sample.
     private(set) var hasHardwareHinge = false
     /// The latest thing to feel or see. Views use it as a trigger for haptics and animations.
     private(set) var feedback: DoorFeedback?
 
-    /// Shut and latched. Decided by the hinge angle, not the system's hinge status.
+    /// Shut and latched. Decided by the door angle, not the system's hinge status.
     private(set) var isClosed = true
-    var angle: Double { reading?.degrees ?? 0 }
+    /// The door angle: the hinge angle, unless a swipe has moved the door.
+    var angle: Double { drive.degrees }
+    /// Whether a swipe, not the hinge, has the door.
+    var isSwiped: Bool { drive.isSwiped }
 
+    private var drive = DoorDrive()
     @ObservationIgnored private var interpreter = DoorMotionInterpreter()
     @ObservationIgnored private let sounds: any DoorSoundPlaying
     @ObservationIgnored private var creakFadeTask: Task<Void, Never>?
     @ObservationIgnored private var settleTask: Task<Void, Never>?
+    @ObservationIgnored private var flingTask: Task<Void, Never>?
+    /// The door angle when the current swipe began, while the user is swiping.
+    @ObservationIgnored private var swipeStart: Double?
     @ObservationIgnored private var feedbackCount = 0
 
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Duor", category: "hinge")
@@ -49,13 +57,51 @@ final class DoorController {
     func hardwareHingeChanged(_ reading: HingeReading?) {
         guard let reading else { return }
         hasHardwareHinge = true
-        ingest(reading)
+        hinge = reading
+        drive.hinge = reading.degrees
+        if !isSwiping { drive.settle() }
+        ingest(drive.isSwiped ? .simulated(degrees: drive.degrees, at: reading.timestamp) : reading)
     }
 
-    /// Input from the on-screen slider on devices without a hinge.
-    func simulatedHingeChanged(degrees: Double) {
-        guard !hasHardwareHinge else { return }
-        ingest(.simulated(degrees: degrees, at: ProcessInfo.processInfo.systemUptime))
+    /// Which screen the door is on. On a phone without a hinge, always the single screen.
+    func screenChanged(isInnerDisplay: Bool) {
+        let screen: DoorScreen = isInnerDisplay ? .inner : .single
+        guard screen != drive.screen else { return }
+        stopFling()
+        swipeStart = nil
+        guard drive.move(to: screen) else { return }
+        // A different screen, a different door: no creak or slam for the jump.
+        sounds.setCreak(velocity: 0)
+        interpreter.restart()
+        ingest(hinge ?? .simulated(degrees: drive.degrees, at: now))
+    }
+
+    // MARK: Swiping
+
+    /// The user is swiping: `translation` is how far, along the door's width (points).
+    func swipeChanged(translation: Double, width: Double) {
+        if swipeStart == nil {
+            stopFling()
+            startInterpreterIfNeeded()
+            swipeStart = drive.degrees
+        }
+        drive.swipe(to: DoorSwipe.degrees(from: swipeStart ?? 0, translation: translation, width: width))
+        ingest(.simulated(degrees: drive.degrees, at: now))
+    }
+
+    /// The user let go: the door swings on with the swipe's speed (points per second).
+    func swipeEnded(velocity: Double, width: Double) {
+        guard swipeStart != nil else { return }
+        swipeStart = nil
+        fling(velocity: DoorSwipe.velocity(velocity, width: width))
+    }
+
+    /// Swings the door open or shut on its own (accessibility actions).
+    func swing(open: Bool) {
+        guard swipeStart == nil else { return }
+        stopFling()
+        startInterpreterIfNeeded()
+        fling(velocity: open ? 240 : -120)
     }
 
     func knock() {
@@ -64,10 +110,42 @@ final class DoorController {
         emit(.knock)
     }
 
+    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    private var isSwiping: Bool { swipeStart != nil || flingTask != nil }
+
+    private func fling(velocity: Double) {
+        var fling = DoorFling(degrees: drive.degrees, velocity: velocity, range: drive.range)
+        flingTask = Task { [weak self] in
+            var last = ProcessInfo.processInfo.systemUptime
+            while !fling.isDone {
+                try? await Task.sleep(for: .milliseconds(16))
+                guard !Task.isCancelled, let self else { return }
+                let time = now
+                fling.step(time - last)
+                last = time
+                drive.swipe(to: fling.degrees)
+                ingest(.simulated(degrees: drive.degrees, at: time))
+            }
+            self?.flingTask = nil
+            self?.drive.settle()
+        }
+    }
+
+    private func stopFling() {
+        flingTask?.cancel()
+        flingTask = nil
+    }
+
+    /// The first sample is the door's starting state. A phone without a hinge has had none yet.
+    private func startInterpreterIfNeeded() {
+        guard !interpreter.hasStarted else { return }
+        ingest(hinge ?? .simulated(degrees: drive.degrees, at: now))
+    }
+
     private func ingest(_ reading: HingeReading) {
         Self.logger.debug(
-            "hinge \(reading.degrees, format: .fixed(precision: 1))° \(String(describing: reading.status))")
-        self.reading = reading
+            "door \(reading.degrees, format: .fixed(precision: 1))° \(String(describing: reading.status))")
         for event in interpreter.ingest(reading) {
             handle(event)
         }

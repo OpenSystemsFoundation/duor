@@ -7,22 +7,28 @@ import SwiftUI
 /// lags a little, bounces off the stop, and swings open from shut when the view appears.
 ///
 /// On a real iPhone Duo the phone half that swings open *is* the door leaf, so only that lag and
-/// bounce are drawn on top of the physical motion. Where nothing moves physically (the Simulator,
-/// phones without a hinge) the whole swing is drawn.
+/// bounce are drawn on top of the physical motion, plus however much further a swipe has closed
+/// the door. Where nothing moves physically (the Simulator, the cover display, phones without a
+/// hinge) the whole swing is drawn.
 struct DoorInsideView: View {
     let look: DoorLook
-    /// Physical hinge angle: 0 folded, 180 flat.
-    let hingeDegrees: Double
+    /// Door angle: 0 shut, 180 flat open. The hinge angle, unless a swipe has moved the door.
+    let doorDegrees: Double
+    /// Physical hinge angle, when the leaf is a half of the phone (0 folded, 180 flat).
+    var hingeDegrees: Double?
     /// The fold crease in this view's coordinates, if the system reports one.
     var crease: CGRect?
+    /// A swipe, not the hinge, has the door.
+    var isSwiped = false
     /// Draw the whole swing because nothing swings physically.
     var simulatesSwing = false
     /// Add a cat to the scene beyond the door.
     var catLovers = false
+    var onClose: () -> Void = {}
 
     @State private var hasSwungIn = false
 
-    private var openness: Double { min(max(hingeDegrees / 180, 0), 1) }
+    private var openness: Double { min(max(doorDegrees / 180, 0), 1) }
     /// How lit the scene is: dark when just cracked open, fully lit from about two-thirds open.
     private var light: Double {
         let t = min(max((openness - 0.06) / 0.6, 0), 1)
@@ -39,16 +45,17 @@ struct DoorInsideView: View {
                 DoorwayArt(look: look, light: light, catLovers: catLovers)
                     .frame(width: split.doorway.width, height: split.doorway.height)
                     .offset(x: split.doorway.minX, y: split.doorway.minY)
-                    .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: hingeDegrees)
+                    .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.86), value: doorDegrees)
 
                 SwingingLeaf(
-                    look: look, light: light, physicalDegrees: hingeDegrees,
-                    drawnDegrees: hasSwungIn ? hingeDegrees : 0, simulatesSwing: simulatesSwing
+                    look: look, light: light, physicalDegrees: hingeDegrees ?? doorDegrees,
+                    drawnDegrees: hasSwungIn ? doorDegrees : 0, simulatesSwing: simulatesSwing || hingeDegrees == nil,
+                    isSwiped: isSwiped
                 )
                 .frame(width: split.leaf.width, height: split.leaf.height)
                 .offset(x: split.leaf.minX, y: split.leaf.minY)
                 // Weight: a slightly bouncy spring, retargeted smoothly by every hinge update.
-                .animation(.spring(response: 0.42, dampingFraction: 0.58), value: hingeDegrees)
+                .animation(.spring(response: 0.42, dampingFraction: 0.58), value: doorDegrees)
 
                 HingeBarrels(palette: look.palette, split: split)
                     .allowsHitTesting(false)
@@ -64,7 +71,8 @@ struct DoorInsideView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Open door"))
-        .accessibilityValue(Text("Open \(Int(hingeDegrees)) degrees"))
+        .accessibilityValue(Text("Open \(Int(doorDegrees)) degrees"))
+        .accessibilityAction(named: Text("Close door"), onClose)
     }
 }
 
@@ -77,6 +85,8 @@ private struct SwingingLeaf: View, Animatable {
     /// Where the drawn door is: follows the physical angle with weight. Animated.
     var drawnDegrees: Double
     let simulatesSwing: Bool
+    /// The door can be swiped further shut than the phone half it's drawn on.
+    let isSwiped: Bool
 
     var animatableData: Double {
         get { drawnDegrees }
@@ -88,8 +98,9 @@ private struct SwingingLeaf: View, Animatable {
         // Without physical motion the leaf stands at (180° − angle) to the doorway:
         // across the doorway when shut, edge-on at 90°, flat at 180°.
         if simulatesSwing { return 180 - drawnDegrees }
-        // On a real Duo the screen half already stands at the physical angle: draw only the lag.
-        return min(max(physicalDegrees - drawnDegrees, -30), 85)
+        // On a real Duo the screen half already stands at the physical angle: draw only the lag,
+        // or, when swiped, however much further shut the door is (up to across the doorway).
+        return min(max(physicalDegrees - drawnDegrees, -30), isSwiped ? 180 : 85)
     }
 
     var body: some View {
@@ -161,9 +172,10 @@ private struct HingeBarrels: View {
 
 #Preview("Half open") {
     DoorInsideView(
-        look: DoorLook(style: .cottage, hardware: .brass, scene: .beach), hingeDegrees: 130, simulatesSwing: true)
+        look: DoorLook(style: .cottage, hardware: .brass, scene: .beach), doorDegrees: 130, simulatesSwing: true)
 }
 
 #Preview("Flat") {
-    DoorInsideView(look: DoorLook(style: .castle, hardware: .bronze, scene: .space), hingeDegrees: 180)
+    DoorInsideView(
+        look: DoorLook(style: .castle, hardware: .bronze, scene: .space), doorDegrees: 180, hingeDegrees: 180)
 }

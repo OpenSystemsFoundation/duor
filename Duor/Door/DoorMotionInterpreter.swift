@@ -76,12 +76,25 @@ struct DoorMotionInterpreter {
         self.configuration = configuration
     }
 
+    /// Whether a sample has arrived since the start (or `restart()`).
+    var hasStarted: Bool { anchor != nil }
+
+    /// Forget the motion so far: the next sample is a fresh starting state, not a movement.
+    /// For when the door jumps without swinging (it moved to another screen).
+    mutating func restart() {
+        anchor = nil
+        latest = nil
+        velocity = 0
+    }
+
     mutating func ingest(_ reading: HingeReading) -> [DoorEvent] {
         guard let anchor else {
             // The first sample is the starting state, not a movement.
             self.anchor = reading
             latest = reading
-            isLatched = reading.degrees <= configuration.latchAngle
+            isLatched =
+                reading.degrees <= configuration.latchAngle
+                || (reading.status == .closed && reading.degrees <= configuration.restLatchAngle)
             latchedAngle = reading.degrees
             isStopArmed = reading.status != .fullyOpen
             stopAngle = reading.degrees

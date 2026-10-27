@@ -1,15 +1,16 @@
 import SwiftUI
 
-/// Shows the outside of the door when folded (cover display) and the inside when open.
+/// Shows the outside of the door when it's shut and the inside when it's open. The door opens by
+/// unfolding the phone, or by swiping (left opens, right closes) on any screen.
 struct RootView: View {
     @State private var controller = DoorController()
     @State private var isShowingSettings = false
-    @State private var simulatedAngle: Double = 0
     @State private var deviceOrientation = DeviceOrientationMonitor()
     @AppStorage(DoorStyle.storageKey) private var style: DoorStyle = .oak
     @AppStorage(HardwareFinish.storageKey) private var hardware: HardwareFinish = .iron
     @AppStorage(InsideScene.storageKey) private var scene: InsideScene = .livingRoom
     @AppStorage(SceneLife.catLoversKey) private var catLovers = false
+    @AppStorage("hasOpenedDoor") private var hasOpenedDoor = false
 
     private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
 
@@ -33,23 +34,35 @@ struct RootView: View {
 
     private var door: some View {
         GeometryReader { proxy in
-            let showsInside = showsInside(proxy)
+            let isInnerDisplay = isInnerDisplay(proxy)
+            // A swiped-open door shows its inside on any screen.
+            let showsInside = isInnerDisplay || (controller.isSwiped && !controller.isClosed)
             let turns = DeviceFixedTurns.quarterTurns(
-                screen: proxy.size, isInnerDisplay: showsInside && controller.hasHardwareHinge,
-                landscape: deviceOrientation.lastLandscape)
+                screen: proxy.size, isInnerDisplay: isInnerDisplay, landscape: deviceOrientation.lastLandscape)
             ZStack {
                 DeviceFixed(quarterTurns: turns) { _, crease in
                     if showsInside {
                         DoorInsideView(
-                            look: look, hingeDegrees: controller.angle, crease: crease,
-                            simulatesSwing: !controller.hasHardwareHinge || Self.isSimulator, catLovers: catLovers)
+                            look: look, doorDegrees: controller.angle,
+                            hingeDegrees: isInnerDisplay ? controller.hinge?.degrees : nil, crease: crease,
+                            isSwiped: controller.isSwiped,
+                            simulatesSwing: !isInnerDisplay || Self.isSimulator, catLovers: catLovers,
+                            onClose: { controller.swing(open: false) })
                     } else {
-                        DoorOutsideView(look: look, feedback: controller.feedback, onKnock: controller.knock)
+                        DoorOutsideView(
+                            look: look, feedback: controller.feedback, onKnock: controller.knock,
+                            onOpen: { controller.swing(open: true) })
                     }
                 }
                 .transition(.opacity)
             }
             .animation(.easeInOut(duration: 0.2), value: showsInside)
+            // On the whole screen, not on either face: the face changes mid-swipe as the door opens.
+            .contentShape(.rect)
+            .simultaneousGesture(swipe(screen: proxy.size, quarterTurns: turns))
+            .onChange(of: isInnerDisplay, initial: true) { _, isInner in
+                controller.screenChanged(isInnerDisplay: isInner)
+            }
         }
         // Dark, never white, if anything ever shows behind the door (crossfades, shakes).
         .background(Color(red: 0.1, green: 0.07, blue: 0.05).ignoresSafeArea())
@@ -64,25 +77,29 @@ struct RootView: View {
             case nil: nil
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            if !controller.hasHardwareHinge {
-                SimulatedHingeControl(degrees: $simulatedAngle)
+        .overlay(alignment: .bottom) {
+            // Without a hinge, swiping is the only way in: say so until the door has been opened.
+            if !controller.hasHardwareHinge && !hasOpenedDoor {
+                SwipeHint()
+                    .padding(.bottom, 24)
+                    .transition(.opacity)
             }
+        }
+        .animation(.easeInOut(duration: 0.3), value: hasOpenedDoor)
+        .onChange(of: controller.isClosed) { _, isClosed in
+            if !isClosed { hasOpenedDoor = true }
         }
         .sheet(isPresented: $isShowingSettings) {
             // Unfolded: the hinge is open well past halfway (folded or no hinge: four tiles per row).
             SettingsView(
                 style: $style, hardware: $hardware, scene: $scene, catLovers: $catLovers,
-                isUnfolded: controller.hasHardwareHinge && controller.angle > 100)
+                isUnfolded: (controller.hinge?.degrees ?? 0) > 100)
         }
         // Paused while Settings is open so browsing doesn't creak.
         .onHingeChange(isEnabled: !isShowingSettings) { _, newContext in
             controller.hardwareHingeChanged(
                 HingeReading(newContext.hinge, at: ProcessInfo.processInfo.systemUptime)
             )
-        }
-        .onChange(of: simulatedAngle) { _, degrees in
-            controller.simulatedHingeChanged(degrees: degrees)
         }
         .task(id: look) {
             controller.apply(sound: look.soundProfile)
@@ -100,17 +117,33 @@ struct RootView: View {
         #endif
     }
 
-    /// Which face of the door to draw.
+    /// Whether this is the iPhone Duo's inner display, where the door is open as far as the phone.
     ///
-    /// With a real hinge the system decides which screen is on (a slightly opened phone often stays
-    /// on the cover display), so follow the screen. Only the inner display reports a fold region
+    /// The system decides which screen is on (a slightly opened phone often stays on the cover
+    /// display), so follow the screen, not the hinge. Only the inner display reports a fold region
     /// (inactive when flat); the cover never does. The interface may also rotate on the inner
-    /// display, so the screen's shape can't be used. Without a hinge there is one screen, so
-    /// follow the simulated hinge instead.
-    private func showsInside(_ proxy: GeometryProxy) -> Bool {
-        guard controller.hasHardwareHinge else { return !controller.isClosed }
+    /// display, so the screen's shape can't be used.
+    private func isInnerDisplay(_ proxy: GeometryProxy) -> Bool {
+        guard controller.hasHardwareHinge else { return false }
         let hasFold = !proxy.reservedRegions(kind: .division, options: .includeInactive).isEmpty
-        return hasFold || controller.reading?.status == .fullyOpen
+        return hasFold || controller.hinge?.status == .fullyOpen
+    }
+
+    /// Swiping the door open or shut, measured across the door (which `DeviceFixed` may have turned).
+    private func swipe(screen: CGSize, quarterTurns: Int) -> some Gesture {
+        let turn = Double(quarterTurns) * .pi / 2
+        let width = quarterTurns.isMultiple(of: 2) ? screen.width : screen.height
+        // Screen space to the door's own horizontal axis: undo the door's rotation.
+        func across(_ vector: CGSize) -> Double {
+            cos(turn) * vector.width + sin(turn) * vector.height
+        }
+        return DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                controller.swipeChanged(translation: across(value.translation), width: width)
+            }
+            .onEnded { value in
+                controller.swipeEnded(velocity: across(value.velocity), width: width)
+            }
     }
 
     /// In the Simulator nothing folds physically, so the door swings on screen.
@@ -123,21 +156,15 @@ struct RootView: View {
     }
 }
 
-/// Stand-in for the hinge on devices that don't have one (and in Previews).
-private struct SimulatedHingeControl: View {
-    @Binding var degrees: Double
-
+/// Tells people without a hinge how to get in.
+private struct SwipeHint: View {
     var body: some View {
-        VStack(spacing: 4) {
-            Text("No hinge detected. Drag to open the door.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Slider(value: $degrees, in: 0...180) {
-                Text("Hinge angle")
-            }
-        }
-        .padding()
-        .background(.regularMaterial)
+        Label("Swipe left to open the door", systemImage: "chevron.left.2")
+            .font(.footnote.weight(.medium))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.regularMaterial, in: .capsule)
+            .allowsHitTesting(false)
     }
 }
 

@@ -27,7 +27,7 @@
 - Unfold: latch click, creak whose volume and pitch follow hinge speed, soft thud at the open stop.
 - Fold: latch click (gentle/firm) or slam, based on closing speed.
 - Settings sheet with the style picker (one entry for now).
-- Works on non-Duo iPhones with an on-screen "hinge" slider.
+- Swipe to open and close the door on any screen, so it also works on non-Duo iPhones (§4.2, "Swiping").
 
 ### Non-goals (for MVP)
 
@@ -87,7 +87,7 @@ UIKit has an extra `.unknown` status. The handler fires once with the initial st
 | "The rate and granularity of angle updates are system policy… don't depend on a particular update frequency or precision." | Velocity is computed from real timestamps, with a clamped time gap. No fixed-rate assumptions. |
 | "If you only need to know whether the hinge is closed, partially open, or fully open, prefer `status`." | **Latch, slam and open-stop events trigger on `status` transitions**, not angle thresholds. The angle only drives the creak and the visuals. |
 | Use the hinge for **effects and interactions, not layout**. | Layout uses size classes / `reservedRegions`; the hinge only animates the door and drives audio. |
-| `hinge` is `nil` on non-foldables. | Fallback slider; the app is still usable everywhere. |
+| `hinge` is `nil` on non-foldables. | Swiping opens the door; the app is still usable everywhere. |
 | The hardware angle range isn't documented. | Don't assume closed is exactly 0° or flat is exactly 180°. Map relative to the angles seen at status changes (see §6.3). |
 
 ### 2.4 Related iPhone Duo APIs worth knowing
@@ -118,7 +118,7 @@ The two halves of the phone are the **door leaf** and the **wall/frame**. The cr
 
 Two rules follow from that:
 
-1. **On a real Duo, the screen on the swinging half never animates the swing.** The phone half physically rotates, so it *is* the door. Its screen shows the leaf's inside face standing still; drawing a 3D swing on top would count the motion twice (that was the v0.1 bug). Where nothing swings physically (the Simulator, phones without a hinge) the leaf swings on screen at the true angle: it stands at 180° − hinge angle to the doorway.
+1. **On a real Duo, the screen on the swinging half never animates the swing.** The phone half physically rotates, so it *is* the door. Its screen shows the leaf's inside face standing still; drawing a 3D swing on top would count the motion twice (that was the v0.1 bug). Where nothing swings physically (the Simulator, the cover display, phones without a hinge) the leaf swings on screen at the true angle: it stands at 180° − hinge angle to the doorway.
 2. **The door is fixed to the device.** The inner display is a resizable scene, which ignores the Info.plist orientation list, and the system's rotation animation spun the whole window through 90° and back. The app is therefore hosted in UIKit (`AppDelegate` → `SceneDelegate` → `DoorHostingController`, a `UIHostingController` subclass) so its root view controller can set **`prefersInterfaceOrientationLocked = true`** (iOS 26+). With the lock, turning the phone turns the door with it and nothing re-lays out. When the system lifts the lock (not full screen, e.g. Split View) `DeviceFixed` still counter-rotates the scene: each screen has a fixed upright shape (inner: wide book posture; cover: tall), and the last landscape device orientation says which way to turn back.
 
    *Tried and rejected:* the Info.plist orientation list and `supportedInterfaceOrientations` (ignored by resizable scenes); suppressing the rotation animation (it runs outside the app); `UIRequiresFullScreen` (deprecated, and it locked the interface to the inner panel's native orientation, which is the device's landscape).
@@ -154,7 +154,16 @@ Knocking is only enabled while closed (you knock on a closed door).
 
 **Controls.** The settings button is a toolbar item with `axisBehavior(.verticalPreferred)` (in a `NavigationStack` with a hidden bar), and so is the settings sheet's Done button. On the iPhone Duo both sit in the system's vertical control lane on the trailing edge, folded and unfolded.
 
-**Which face to draw.** With a real hinge, the app follows the *screen*, not the hinge status: the system decides when to switch displays, and a slightly opened phone often stays on the cover display. Only the inner display reports a fold region (`reservedRegions(kind: .division, options: .includeInactive)`, inactive when flat); the cover never does. So `RootView` draws the inside view when a fold region exists (or the hinge is fully open), and the outside face otherwise. Screen shape can't be used, because the inner display can rotate. Without a hinge there is one screen, so it follows the simulated hinge status.
+**Which face to draw.** With a real hinge, the app follows the *screen*, not the hinge status: the system decides when to switch displays, and a slightly opened phone often stays on the cover display. Only the inner display reports a fold region (`reservedRegions(kind: .division, options: .includeInactive)`, inactive when flat); the cover never does. So `RootView` draws the inside view when a fold region exists (or the hinge is fully open), and the outside face otherwise, unless the door has been swiped open. Screen shape can't be used, because the inner display can rotate. Without a hinge there is one screen, which shows the inside view whenever the swiped door is open.
+
+**Swiping.** On every screen, swiping left opens the door and swiping right closes it (the way its free edge moves in both views); a swipe across 85% of the width is a full swing. The gesture sits on `RootView`'s container, not on either face, because the face changes mid-swipe as the door unlatches, and it is measured along the door's own axis (undoing any `DeviceFixed` turn). `DoorDrive` (pure, tested) decides where the door is:
+
+- The hinge has the door until the user swipes; then the swipe has it until the two agree again.
+- **Inner display:** the phone half is the leaf, so a swipe can close the door further than the phone (the leaf is drawn swung in from the phone half, up to across the doorway) but never open it past the phone. The hinge takes over again once the door is swiped open as far as the phone, or the phone is folded down to meet the door, so folding a swiped-shut phone stays silent.
+- **Single screen** (cover display, no hinge): the whole swing is drawn and the swipe can take the door from shut to flat. It hands back to the hinge once swiped shut.
+- **Changing screens** hands the door back to the hinge. If the angle jumps (swiped open on the cover, then unfolded), the interpreter restarts instead of hearing a slam.
+
+On release, `DoorFling` carries the door on with the swipe's speed under friction, so a flick slams it and a push leaves it ajar; within 10° of shut a slow door swings itself shut gently. The fling and the drag feed the interpreter like hinge samples (~60 Hz), so creaks, the open stop and close kinds work unchanged. Without a hinge, a "Swipe left to open the door" hint shows until the door has been opened once. VoiceOver users get "Open door" and "Close door" actions.
 
 ### 4.3 Settings
 
@@ -187,7 +196,7 @@ Visits are a pure function of time: each period gets one visit at a seeded rando
 
 The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`SwingingLeaf`, an `Animatable` view), so it lags a touch behind a fast fold and bounces off the stop. When the inside view appears, the leaf swings open from shut. Past 90° of on-screen rotation it shows its outside face, as a real door would.
 
-- **Simulator and phones without a hinge:** the whole swing is drawn: the leaf stands at (180° − spring angle) to the doorway.
+- **Simulator, cover display and phones without a hinge:** the whole swing is drawn: the leaf stands at (180° − spring angle) to the doorway.
 - **Real Duo:** the screen half already stands at the physical angle, so only the spring's lag is drawn (physical − spring, clamped), never the full swing twice.
 
 ---
@@ -203,8 +212,8 @@ The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`Sw
  │     │  ▲                         ▲                 │      │                │
  │     │  └── isClosed / angle ─────┼─────────────────┘      │ DoorEvent      │
  │     │                            │                        ▼                │
- │     │                  SimulatedHingeControl     DoorMotionInterpreter     │
- │     │                  (non-Duo fallback)        (pure value type)         │
+ │     │                  swipe → DoorDrive /       DoorMotionInterpreter     │
+ │     │                  DoorFling (pure)          (pure value type)         │
  │     ▼                                                     │                │
  │  DoorOutsideView / DoorInsideView / SettingsView          │                │
  └───────────────────────────────────────────────────────────┼────────────────┘
@@ -219,10 +228,11 @@ The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`Sw
 | File | Responsibility |
 |---|---|
 | `App/DuorApp.swift` | App entry. |
-| `App/RootView.swift` | Picks outside vs. inside view, hosts `onHingeChange`, settings sheet, haptics, fallback slider. |
+| `App/RootView.swift` | Picks outside vs. inside view, hosts `onHingeChange` and the swipe gesture, settings sheet, haptics, swipe hint. |
 | `Hinge/HingeReading.swift` | Our own `Sendable` value type for one hinge sample (degrees, status, monotonic timestamp). Decouples logic from `DeviceHinge` so it can be unit tested and simulated. |
 | `Door/DoorMotionInterpreter.swift` | **Pure** state machine: `ingest(HingeReading) -> [DoorEvent]`. Computes smoothed velocity, emits `unlatched`, `swing(velocity)`, `hitOpenStop(speed)`, `closed(CloseKind)`. Fully covered by unit tests. |
-| `Door/DoorController.swift` | `@Observable` glue: holds the latest reading, feeds the interpreter, maps events → sounds, debounces the creak fade, exposes `isClosed`, `angle`, `knockCount`. |
+| `Door/DoorSwipe.swift` | **Pure** swipe logic: `DoorDrive` (hinge or swipe, per screen), `DoorSwipe` (points → degrees), `DoorFling` (momentum after release). Unit tested. |
+| `Door/DoorController.swift` | `@Observable` glue: holds the latest hinge reading and the `DoorDrive`, runs the fling, feeds the door angle to the interpreter, maps events → sounds, debounces the creak fade, exposes `isClosed`, `angle`, `isSwiped`. |
 | `Door/DoorStyle.swift` | Style catalogue (enum, `@AppStorage`-backed). Palette + `SoundProfile` per style. |
 | `Door/DoorArt.swift` | `Canvas`-drawn four-panel leaf (grain, raised panels, iron hinges, knob, peephole) with `hingeSide` mirroring; shared `DoorGeometry` so hinges, knob and strike plate line up across views. |
 | `Door/DoorwayArt.swift` | The fixed half: casing, jambs, strike plate, and the lit room beyond. |

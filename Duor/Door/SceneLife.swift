@@ -368,7 +368,7 @@ enum SceneLife {
                 snail(in: &$0, size: size, time: time)
             }
         }
-        // A cat pounces on a mouse. The mouse was right behind it.
+        // A cat chases a mouse, cartoon style. The mouse wins.
         if catLovers {
             catAtTheWall(in: &context, rect: rect, time: time)
         }

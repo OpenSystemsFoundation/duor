@@ -116,58 +116,98 @@ enum CatStory {
 
     // MARK: Brick wall
 
-    /// Where the mouse hides: right behind the spot the cat leaps from (fraction of the width).
-    static let mouseSpot = 0.2
+    static let pounceDuration = 11.0
+    /// The cat's two leaps: when it leaves the ground, and when it lands.
+    static let firstPounce = 4.3...4.9
+    static let secondPounce = 6.6...7.2
 
-    static let pounceDuration = 9.0
-    /// When the cat leaves the ground, and when it lands.
-    static let pounceTakeoff = 4.1
-    static let pounceLanding = 4.9
-    /// When the mouse makes a run for it, once the cat has landed.
-    static let mouseBolts = 5.2
+    /// Where the mouse stops to sniff, and where it dodges to (fractions of the width).
+    private static let sniffSpot = 0.42
+    private static let dodgeSpot = 0.72
 
-    /// The cat walks along the wall, has a good look around, wiggles, and pounces on something
-    /// across the way. The mouse was right behind it all along: the leap uncovers it, it freezes,
-    /// and once the cat lands it runs off the way the cat came. The cat looks back, then walks
-    /// off with as much dignity as it has left.
+    /// A cartoon chase. The cat sneaks up on the mouse, wiggles, and pounces. The mouse jumps
+    /// out of its skin, scoots ahead and turns round to hop up and down at the cat. The cat lands on nothing, collects itself and pounces again, and the
+    /// mouse runs straight back underneath it and away. The cat looks back, then walks off
+    /// with as much dignity as it has left.
     static func pounce(at t: Double) -> CatFrame? {
         let margin = 0.3
-        let speed = 1.0 / 3
-        let takeoffSpot = 0.28
-        let landingSpot = 0.68
-        guard t >= 0 else { return nil }
-        let walkIn = (takeoffSpot + margin) / speed
+        let creep = 0.17
+        let walk = 1.0 / 3
+        let start = 1.0
+        let crouchSpot = 0.12
+        let arrives = start + (crouchSpot + margin) / creep
+        func leap(_ jump: ClosedRange<Double>, from: Double, to: Double, height: Double) -> CatFrame {
+            let u = (t - jump.lowerBound) / (jump.upperBound - jump.lowerBound)
+            return CatFrame(across: from + (to - from) * u, pose: .leap, lift: sin(u * .pi) * height)
+        }
         switch t {
-        case ..<walkIn:
-            return CatFrame(across: -margin + t * speed, pose: .walk)
-        case ..<2.2:
-            return CatFrame(across: takeoffSpot, pose: .stand)
-        case ..<2.9:
-            return CatFrame(across: takeoffSpot, pose: .stand, looksBack: true)
-        case ..<3.3:
-            return CatFrame(across: takeoffSpot, pose: .stand)
-        case ..<pounceTakeoff:
-            return CatFrame(across: takeoffSpot, pose: .wiggle)
-        case ..<pounceLanding:
-            let u = (t - pounceTakeoff) / (pounceLanding - pounceTakeoff)
-            return CatFrame(
-                across: takeoffSpot + (landingSpot - takeoffSpot) * u, pose: .leap, lift: sin(u * .pi) * 1.1)
-        case ..<5.4:
-            return CatFrame(across: landingSpot, pose: .crouch)
-        case ..<6.8:
-            return CatFrame(across: landingSpot, pose: .stand, looksBack: true)
+        case ..<start:
+            return nil
+        case ..<arrives:
+            return CatFrame(across: -margin + (t - start) * creep, pose: .stalk)
+        case ..<firstPounce.lowerBound:
+            return CatFrame(across: crouchSpot, pose: .wiggle)
+        case ..<firstPounce.upperBound:
+            return leap(firstPounce, from: crouchSpot, to: sniffSpot, height: 0.8)
+        case ..<5.6:
+            return CatFrame(across: sniffSpot, pose: .crouch)
+        case ..<6.0:
+            return CatFrame(across: sniffSpot, pose: .stand)
+        case ..<secondPounce.lowerBound:
+            return CatFrame(across: sniffSpot, pose: .wiggle)
+        case ..<secondPounce.upperBound:
+            return leap(secondPounce, from: sniffSpot, to: dodgeSpot, height: 1.1)
+        case ..<7.7:
+            return CatFrame(across: dodgeSpot, pose: .crouch)
+        case ..<9.0:
+            return CatFrame(across: dodgeSpot, pose: .stand, looksBack: true)
         default:
-            let across = landingSpot + (t - 6.8) * speed
+            let across = dodgeSpot + (t - 9.0) * walk
             return across < 1 + margin ? CatFrame(across: across, pose: .walk) : nil
         }
     }
 
-    /// Where the mouse is (same measure as `CatFrame.across`). It only shows once the cat leaps
-    /// off it (before that the cat hides it), sits frozen while the cat is in the air, then runs
-    /// away off the edge the cat came from.
-    static func mouse(at t: Double) -> Double? {
-        guard t >= pounceTakeoff else { return nil }
-        let across = mouseSpot - max(t - mouseBolts, 0) * 0.15
-        return across > -0.15 ? across : nil
+    /// Where the mouse is (same measure as `CatFrame.across`). It runs in ahead of the cat,
+    /// stops to sniff, dodges the first pounce, taunts the cat, and runs off under the second.
+    static func mouse(at t: Double) -> MouseFrame? {
+        let runIn = 0.4
+        let dash = (dodgeSpot - sniffSpot) / 0.35
+        let flee = 0.55
+        let hop = 0.25
+        switch t {
+        case ..<0:
+            return nil
+        case ..<((sniffSpot + 0.1) / runIn):
+            return MouseFrame(across: -0.1 + t * runIn, running: true)
+        case ..<firstPounce.lowerBound:
+            return MouseFrame(across: sniffSpot)
+        case ..<(firstPounce.lowerBound + hop):
+            // Jumps out of its skin.
+            let u = (t - firstPounce.lowerBound) / hop
+            return MouseFrame(across: sniffSpot, lift: sin(u * .pi) * 0.9)
+        case ..<(firstPounce.lowerBound + hop + 0.35):
+            return MouseFrame(across: sniffSpot + (t - firstPounce.lowerBound - hop) * dash, running: true)
+        case ..<5.1:
+            return MouseFrame(across: dodgeSpot)
+        case ..<6.3:
+            // Turns round and hops up and down at the cat.
+            return MouseFrame(across: dodgeSpot, facesBack: true, lift: abs(sin((t - 5.1) * 8)) * 0.35)
+        case ..<secondPounce.lowerBound:
+            return MouseFrame(across: dodgeSpot, facesBack: true)
+        default:
+            let across = dodgeSpot - (t - secondPounce.lowerBound) * flee
+            return across > -0.15 ? MouseFrame(across: across, running: true, facesBack: true) : nil
+        }
     }
+}
+
+/// Where the mouse at the brick wall is in one frame.
+struct MouseFrame: Equatable, Sendable {
+    /// Same measure as `CatFrame.across`.
+    var across: Double
+    var running = false
+    /// Facing back the way it came (towards the cat, until the cat is behind it).
+    var facesBack = false
+    /// Height off the ground, as a fraction of the mouse's size.
+    var lift: Double = 0
 }

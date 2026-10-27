@@ -64,19 +64,18 @@ extension SceneLife {
         }
     }
 
-    /// At the brick wall: a pounce on nothing, and the mouse that was right behind the cat.
+    /// At the brick wall: a cat chasing a mouse, cartoon style. The mouse wins.
     static func catAtTheWall(in context: inout GraphicsContext, rect: CGRect, time: TimeInterval) {
         let duration = CatStory.pounceDuration
         guard let visit = Self.visit(time: time, period: 20, duration: duration, salt: 22) else { return }
         let t = visit.progress * duration
         let ground = rect.maxY - 1
-        if let across = CatStory.mouse(at: t) {
-            // Runs the other way from the cat: back the way the cat came.
-            critter(
-                in: &context, at: CGPoint(x: sceneX(across, in: rect, facing: visit.facing), y: ground),
-                facing: -visit.facing
-            ) {
-                mouse(in: &$0, size: rect.width * 0.09, time: time, running: t >= CatStory.mouseBolts)
+        if let frame = CatStory.mouse(at: t) {
+            let size = rect.width * 0.09
+            let point = CGPoint(
+                x: sceneX(frame.across, in: rect, facing: visit.facing), y: ground - CGFloat(frame.lift) * size)
+            critter(in: &context, at: point, facing: frame.facesBack ? -visit.facing : visit.facing) {
+                mouse(in: &$0, size: size, time: time, running: frame.running)
             }
         }
         if let frame = CatStory.pounce(at: t) {
@@ -453,11 +452,12 @@ extension SceneLife {
             with: .color(.white.opacity(0.7)))
     }
 
-    /// A little grey mouse, running flat out (or frozen to the spot).
+    /// A little grey mouse, running flat out, or standing with its nose twitching.
     private static func mouse(in context: inout GraphicsContext, size: CGFloat, time: TimeInterval, running: Bool) {
         let grey = Color(white: 0.58)
         let pink = Color(red: 0.95, green: 0.65, blue: 0.68)
         let scurry = running ? CGFloat(sin(time * 40)) * size * 0.05 : 0
+        let twitch = running ? 0 : CGFloat(sin(time * 30)) * size * 0.02
         var tail = Path()
         tail.move(to: CGPoint(x: -size * 0.4, y: -size * 0.12))
         tail.addQuadCurve(
@@ -486,7 +486,7 @@ extension SceneLife {
             Path(ellipseIn: CGRect(x: size * 0.36, y: -size * 0.3, width: size * 0.06, height: size * 0.06)),
             with: .color(.black))
         context.fill(
-            Path(ellipseIn: CGRect(x: size * 0.52, y: -size * 0.26, width: size * 0.07, height: size * 0.06)),
+            Path(ellipseIn: CGRect(x: size * 0.52, y: -size * 0.26 + twitch, width: size * 0.07, height: size * 0.06)),
             with: .color(pink))
     }
 }

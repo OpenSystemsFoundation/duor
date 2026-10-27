@@ -80,34 +80,51 @@ struct CatStoryTests {
 
     // MARK: Brick wall
 
-    @Test func catLooksAroundBeforeItLeaps() {
-        let beforeTakeoff = times(to: CatStory.pounceTakeoff - 0.01).compactMap { CatStory.pounce(at: $0) }
-        #expect(beforeTakeoff.contains { $0.looksBack })
-        #expect(beforeTakeoff.contains { $0.pose == .wiggle })
-        #expect(!beforeTakeoff.contains { $0.pose == .leap })
+    @Test func mouseIsThereFirstAndTheCatSneaksUpBehindIt() throws {
+        let first = try #require(CatStory.mouse(at: 0))
+        #expect(first.across < 0)
+        #expect(CatStory.pounce(at: 0) == nil)
+        for t in times(to: CatStory.firstPounce.lowerBound - 0.01) {
+            guard let cat = CatStory.pounce(at: t), let mouse = CatStory.mouse(at: t) else { continue }
+            #expect(cat.across < mouse.across - 0.15)
+            #expect(!mouse.facesBack)
+        }
+        let beforeLeap = times(to: CatStory.firstPounce.lowerBound - 0.01).compactMap { CatStory.pounce(at: $0) }
+        #expect(beforeLeap.contains { $0.pose == .stalk })
+        #expect(beforeLeap.contains { $0.pose == .wiggle })
+        #expect(!beforeLeap.contains { $0.pose == .leap })
     }
 
-    @Test func leapCrossesToTheOtherSide() throws {
-        let takeoff = try #require(CatStory.pounce(at: CatStory.pounceTakeoff))
-        let landing = try #require(CatStory.pounce(at: CatStory.pounceLanding))
-        let middle = try #require(CatStory.pounce(at: (CatStory.pounceTakeoff + CatStory.pounceLanding) / 2))
-        #expect(takeoff.across < 0.5)
-        #expect(landing.across > 0.5)
-        #expect(middle.pose == .leap)
-        #expect(middle.lift > 0.5)
+    @Test func mouseJumpsAndDodgesTheFirstPounce() throws {
+        let start = try #require(CatStory.mouse(at: CatStory.firstPounce.lowerBound))
+        let jumped = times(to: CatStory.firstPounce.upperBound).filter {
+            $0 > CatStory.firstPounce.lowerBound && (CatStory.mouse(at: $0)?.lift ?? 0) > 0.5
+        }
+        #expect(!jumped.isEmpty)
+        let cat = try #require(CatStory.pounce(at: CatStory.firstPounce.upperBound))
+        let mouse = try #require(CatStory.mouse(at: CatStory.firstPounce.upperBound))
+        // The cat lands right where the mouse was; the mouse is well ahead by then.
+        #expect(abs(cat.across - start.across) < 0.01)
+        #expect(mouse.across > cat.across + 0.2)
     }
 
-    @Test func leapUncoversTheMouseWhichRunsTheOtherWayOnceTheCatLands() throws {
-        #expect(CatStory.mouse(at: CatStory.pounceTakeoff - 0.01) == nil)
-        // It was right behind the cat, and freezes while the cat is in the air.
-        let cat = try #require(CatStory.pounce(at: CatStory.pounceTakeoff))
-        let uncovered = try #require(CatStory.mouse(at: CatStory.pounceTakeoff))
-        #expect(uncovered < cat.across)
-        #expect(cat.across - uncovered < 0.15)
-        #expect(CatStory.mouse(at: CatStory.mouseBolts) == uncovered)
-        #expect(CatStory.mouseBolts > CatStory.pounceLanding)
-        let later = try #require(CatStory.mouse(at: CatStory.mouseBolts + 0.5))
-        #expect(later < uncovered)
+    @Test func mouseTauntsTheCatBetweenPounces() {
+        let between = stride(from: CatStory.firstPounce.upperBound, to: CatStory.secondPounce.lowerBound, by: 0.05)
+        let taunting = between.compactMap { CatStory.mouse(at: $0) }.filter { $0.facesBack && $0.lift > 0.1 }
+        #expect(!taunting.isEmpty)
+    }
+
+    @Test func mouseRunsUnderTheSecondLeap() throws {
+        let middle = (CatStory.secondPounce.lowerBound + CatStory.secondPounce.upperBound) / 2
+        let cat = try #require(CatStory.pounce(at: middle))
+        let mouse = try #require(CatStory.mouse(at: middle))
+        #expect(cat.pose == .leap)
+        #expect(cat.lift > 0.8)
+        #expect(abs(cat.across - mouse.across) < 0.1)
+        let landed = try #require(CatStory.pounce(at: CatStory.secondPounce.upperBound))
+        let fled = try #require(CatStory.mouse(at: CatStory.secondPounce.upperBound))
+        #expect(fled.across < landed.across - 0.2)
+        #expect(fled.running && fled.facesBack)
     }
 
     @Test func catWatchesTheMouseGetAway() {
@@ -115,6 +132,12 @@ struct CatStoryTests {
             CatStory.mouse(at: $0) != nil && CatStory.pounce(at: $0)?.looksBack == true
         }
         #expect(!watching.isEmpty)
+    }
+
+    @Test func mouseRunsRightOffTheScreen() throws {
+        let frames = times(to: CatStory.pounceDuration).compactMap { CatStory.mouse(at: $0) }
+        let last = try #require(frames.last)
+        #expect(last.across < 0)
     }
 
     @Test func pounceIsOverByTheEndOfTheVisit() {

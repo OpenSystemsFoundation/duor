@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// Pick the door, its hardware, what's behind it, and whether a cat lives there.
+/// Pick the door, its hardware, what's behind it, whether a cat lives there, and whether the door
+/// can be swiped.
 struct SettingsView: View {
     @Binding var style: DoorStyle
     @Binding var hardware: HardwareFinish
     @Binding var scene: InsideScene
     @Binding var catLovers: Bool
+    @Binding var swipeMode: Bool
+    /// Without a hinge, swiping is the only way to open the door, so it can't be turned off.
+    var hasHinge = true
     /// Unfolded there's room for every tile in one row; folded, at most four per row.
     var isUnfolded = false
     @Environment(\.dismiss) private var dismiss
@@ -59,12 +63,20 @@ struct SettingsView: View {
                 } footer: {
                     Text("A cat joins every scene behind the door, each one up to something different.")
                 }
+
+                if hasHinge {
+                    Section {
+                        Toggle("Swipe mode", systemImage: "hand.draw", isOn: $swipeMode)
+                    } footer: {
+                        Text("Swipe left to open the door and right to close it, folded or unfolded.")
+                    }
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done", systemImage: "checkmark") { dismiss() }
                 }
                 // On the iPhone Duo: in the vertical control lane, like the settings button.
                 .axisBehavior(.verticalPreferred)
@@ -156,5 +168,6 @@ private struct MetalSwatch: View {
 
 #Preview {
     SettingsView(
-        style: .constant(.cottage), hardware: .constant(.brass), scene: .constant(.beach), catLovers: .constant(true))
+        style: .constant(.cottage), hardware: .constant(.brass), scene: .constant(.beach), catLovers: .constant(true),
+        swipeMode: .constant(true))
 }

@@ -63,6 +63,12 @@ struct DoorDrive: Equatable, Sendable {
         swiped = nil
         return abs(degrees - before) > Self.tolerance
     }
+
+    /// Hands the door back to the hinge, wherever the swipe left it (swiping was turned off).
+    /// - Returns: Whether the door angle jumped.
+    mutating func release() -> Bool {
+        move(to: screen)
+    }
 }
 
 /// How a horizontal swipe turns the door: swiping left opens it, swiping right closes it, the

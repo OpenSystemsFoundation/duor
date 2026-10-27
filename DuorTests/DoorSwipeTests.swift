@@ -78,6 +78,15 @@ struct DoorSwipeTests {
         #expect(!jumpedBack)
     }
 
+    @Test func turningSwipingOffHandsBackToTheHinge() {
+        var drive = DoorDrive(screen: .single, hinge: 0)
+        drive.swipe(to: 90)
+        let jumped = drive.release()
+        #expect(jumped)
+        #expect(!drive.isSwiped)
+        #expect(drive.degrees == 0)
+    }
+
     // MARK: Swipe
 
     @Test func swipingLeftOpensAndRightCloses() {

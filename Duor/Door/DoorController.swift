@@ -69,8 +69,18 @@ final class DoorController {
         guard screen != drive.screen else { return }
         stopFling()
         swipeStart = nil
-        guard drive.move(to: screen) else { return }
-        // A different screen, a different door: no creak or slam for the jump.
+        if drive.move(to: screen) { restartAfterJump() }
+    }
+
+    /// Swiping was turned off: the hinge has the door again, wherever the swipe left it.
+    func stopSwiping() {
+        stopFling()
+        swipeStart = nil
+        if drive.release() { restartAfterJump() }
+    }
+
+    /// The door jumped to the hinge angle without swinging: no creak or slam for that.
+    private func restartAfterJump() {
         sounds.setCreak(velocity: 0)
         interpreter.restart()
         ingest(hinge ?? .simulated(degrees: drive.degrees, at: now))

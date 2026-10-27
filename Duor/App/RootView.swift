@@ -11,6 +11,10 @@ struct RootView: View {
     @AppStorage(InsideScene.storageKey) private var scene: InsideScene = .livingRoom
     @AppStorage(SceneLife.catLoversKey) private var catLovers = false
     @AppStorage("hasOpenedDoor") private var hasOpenedDoor = false
+    @AppStorage("swipeMode") private var swipeMode = true
+
+    /// Swiping is the only way in without a hinge, so it can only be turned off on a foldable.
+    private var canSwipe: Bool { swipeMode || !controller.hasHardwareHinge }
 
     private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
 
@@ -47,11 +51,11 @@ struct RootView: View {
                             hingeDegrees: isInnerDisplay ? controller.hinge?.degrees : nil, crease: crease,
                             isSwiped: controller.isSwiped,
                             simulatesSwing: !isInnerDisplay || Self.isSimulator, catLovers: catLovers,
-                            onClose: { controller.swing(open: false) })
+                            onClose: canSwipe ? { controller.swing(open: false) } : nil)
                     } else {
                         DoorOutsideView(
                             look: look, feedback: controller.feedback, onKnock: controller.knock,
-                            onOpen: { controller.swing(open: true) })
+                            onOpen: canSwipe ? { controller.swing(open: true) } : nil)
                     }
                 }
                 .transition(.opacity)
@@ -59,7 +63,7 @@ struct RootView: View {
             .animation(.easeInOut(duration: 0.2), value: showsInside)
             // On the whole screen, not on either face: the face changes mid-swipe as the door opens.
             .contentShape(.rect)
-            .simultaneousGesture(swipe(screen: proxy.size, quarterTurns: turns))
+            .simultaneousGesture(swipe(screen: proxy.size, quarterTurns: turns), including: canSwipe ? .all : .subviews)
             .onChange(of: isInnerDisplay, initial: true) { _, isInner in
                 controller.screenChanged(isInnerDisplay: isInner)
             }
@@ -89,11 +93,14 @@ struct RootView: View {
         .onChange(of: controller.isClosed) { _, isClosed in
             if !isClosed { hasOpenedDoor = true }
         }
+        .onChange(of: canSwipe) { _, canSwipe in
+            if !canSwipe { controller.stopSwiping() }
+        }
         .sheet(isPresented: $isShowingSettings) {
             // Unfolded: the hinge is open well past halfway (folded or no hinge: four tiles per row).
             SettingsView(
-                style: $style, hardware: $hardware, scene: $scene, catLovers: $catLovers,
-                isUnfolded: (controller.hinge?.degrees ?? 0) > 100)
+                style: $style, hardware: $hardware, scene: $scene, catLovers: $catLovers, swipeMode: $swipeMode,
+                hasHinge: controller.hasHardwareHinge, isUnfolded: (controller.hinge?.degrees ?? 0) > 100)
         }
         // Paused while Settings is open so browsing doesn't creak.
         .onHingeChange(isEnabled: !isShowingSettings) { _, newContext in

@@ -24,7 +24,8 @@ struct DoorInsideView: View {
     var simulatesSwing = false
     /// Add a cat to the scene beyond the door.
     var catLovers = false
-    var onClose: () -> Void = {}
+    /// Closes the door without a swipe (accessibility). Nil when swiping is off.
+    var onClose: (() -> Void)?
 
     @State private var hasSwungIn = false
 
@@ -72,7 +73,11 @@ struct DoorInsideView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Open door"))
         .accessibilityValue(Text("Open \(Int(doorDegrees)) degrees"))
-        .accessibilityAction(named: Text("Close door"), onClose)
+        .accessibilityActions {
+            if let onClose {
+                Button("Close door", action: onClose)
+            }
+        }
     }
 }
 

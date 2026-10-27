@@ -7,7 +7,8 @@ struct DoorOutsideView: View {
     /// Latest door feedback, for the knock and close shakes.
     let feedback: DoorFeedback?
     let onKnock: () -> Void
-    var onOpen: () -> Void = {}
+    /// Opens the door without a swipe (accessibility). Nil when swiping is off.
+    var onOpen: (() -> Void)?
 
     @State private var dents: [KnockDent] = []
 
@@ -52,7 +53,11 @@ struct DoorOutsideView: View {
             .accessibilityHint(Text("Double-tap to knock."))
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { onKnock() }
-            .accessibilityAction(named: Text("Open door"), onOpen)
+            .accessibilityActions {
+                if let onOpen {
+                    Button("Open door", action: onOpen)
+                }
+            }
     }
 
     private func knock(at location: CGPoint) {

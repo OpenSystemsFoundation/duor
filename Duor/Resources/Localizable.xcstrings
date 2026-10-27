@@ -93,6 +93,12 @@
     },
     "Swipe left to open the door" : {
 
+    },
+    "Swipe left to open the door and right to close it, folded or unfolded." : {
+
+    },
+    "Swipe mode" : {
+
     }
   },
   "version" : "1.0"

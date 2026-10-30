@@ -39,6 +39,7 @@
             { "path": "CatStories.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorOutsideView.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorInsideView.swift", "target-membership": [ "Duor/compile-sources" ] },
+            { "path": "DoorSlideView.swift", "target-membership": [ "Duor/compile-sources" ] },
           ],
         }, {
           "kind": "group",

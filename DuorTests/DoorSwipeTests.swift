@@ -155,6 +155,37 @@ struct DoorSwipeTests {
         #expect(events.contains(.closed(.gentle)))
     }
 
+    // MARK: Slide
+
+    @Test func shutDoorCoversTheFrame() {
+        let slide = DoorSlide(degrees: 0)
+        #expect(!slide.isOpen)
+        #expect(slide.scale == 1)
+        #expect(slide.offset(width: 400) == 0)
+    }
+
+    @Test func openDoorIsEntirelyOffScreen() {
+        let width = 400.0
+        let slide = DoorSlide(degrees: 180)
+        #expect(slide.uncovered == 1)
+        // The trailing edge of the door, grown about its center, plus its shadow.
+        let trailingEdge = width / 2 + width * slide.scale / 2 + DoorSlide.shadowWidth + slide.offset(width: width)
+        #expect(trailingEdge <= 0.001)
+    }
+
+    @Test func doorSlidesFurtherTheMoreItOpens() {
+        let width = 400.0
+        let offsets = stride(from: 0.0, through: 180, by: 20).map { DoorSlide(degrees: $0).offset(width: width) }
+        #expect(zip(offsets, offsets.dropFirst()).allSatisfy { $0 > $1 })
+    }
+
+    @Test func doorIsLiftedWhileItSlides() {
+        #expect(DoorSlide(degrees: 10).scale > 1)
+        #expect(DoorSlide(degrees: 90).scale == 1 + DoorSlide.lift)
+        #expect(DoorSlide(degrees: 400).uncovered == 1)
+        #expect(DoorSlide(degrees: -5).uncovered == 0)
+    }
+
     // MARK: Swipe mode
 
     @Test func swipeModeIsOffByDefaultWithAHinge() {

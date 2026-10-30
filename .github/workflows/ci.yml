@@ -11,8 +11,8 @@ concurrency:
 
 jobs:
   test:
-    # Needs a runner image with Xcode 27.1 and the iPhone Duo simulator.
-    runs-on: macos-latest
+    # The Xcode 27 image (Apple Silicon) has Xcode 27.1 and the iOS 27.1 iPhone Duo simulator.
+    runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4

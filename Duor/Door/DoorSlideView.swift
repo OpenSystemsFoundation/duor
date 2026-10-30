@@ -38,11 +38,12 @@ struct DoorSlideView: View {
                 DoorOutsideView(look: look, feedback: feedback, onKnock: onKnock, onOpen: onOpen)
                     // The shadow the lifted door casts on the frame beside it.
                     .background(alignment: .trailing) {
-                        LinearGradient(colors: [.black.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
-                            .frame(width: DoorSlide.shadowWidth)
-                            .offset(x: DoorSlide.shadowWidth)
-                            .opacity(slide.isOpen ? 1 : 0)
-                            .allowsHitTesting(false)
+                        LinearGradient(
+                            colors: [.black.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: DoorSlide.shadowWidth)
+                        .offset(x: DoorSlide.shadowWidth)
+                        .opacity(slide.isOpen ? 1 : 0)
+                        .allowsHitTesting(false)
                     }
                     .scaleEffect(slide.scale)
                     .offset(x: slide.offset(width: proxy.size.width))

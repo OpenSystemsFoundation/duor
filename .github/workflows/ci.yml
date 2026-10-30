@@ -11,13 +11,14 @@ concurrency:
 
 jobs:
   test:
-    # The Xcode 27 image (Apple Silicon) has Xcode 27.1 and the iOS 27.1 iPhone Duo simulator.
+    # The Xcode 27 image (Apple Silicon) has Xcode 27.2 (installed as the release candidate, 27B48).
+    # Its only iPhone Duo simulator runs iOS 27.1, so keep the deployment target at 27.1.
     runs-on: xcode-27
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - name: Select Xcode 27.1
-        run: sudo xcode-select -s /Applications/Xcode_27.1.app
+      - name: Select Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
       - name: Lint
         run: make lint
       - name: Test

@@ -14,6 +14,8 @@ final class DoorAudioEngine: DoorSoundPlaying {
     private let synth: DoorSynth
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Duor", category: "audio")
     private var observers: [Task<Void, Never>] = []
+    /// True while an asynchronous session activation is in flight, so overlapping calls don't stack up.
+    private var isStarting = false
 
     init() {
         let session = AVAudioSession.sharedInstance()
@@ -22,7 +24,6 @@ final class DoorAudioEngine: DoorSoundPlaying {
             try session.setCategory(.playback, options: [.mixWithOthers])
             // Short buffers keep the time from hinge movement to sound low.
             try session.setPreferredIOBufferDuration(0.005)
-            try session.setActive(true)
         } catch {
             logger.error("Audio session setup failed: \(error.localizedDescription)")
         }
@@ -36,10 +37,10 @@ final class DoorAudioEngine: DoorSoundPlaying {
         do {
             let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
             try engine.connectNode(source, to: engine.mainMixerNode, format: format)
-            try engine.start()
         } catch {
-            logger.error("Audio engine failed to start: \(error.localizedDescription)")
+            logger.error("Audio engine setup failed: \(error.localizedDescription)")
         }
+        startIfNeeded()
         observeRestarts()
     }
 
@@ -48,7 +49,7 @@ final class DoorAudioEngine: DoorSoundPlaying {
     }
 
     func play(_ sound: DoorSound, volume: Float) {
-        restartIfNeeded()
+        startIfNeeded()
         synth.play(sound, volume: volume)
     }
 
@@ -78,19 +79,29 @@ final class DoorAudioEngine: DoorSoundPlaying {
         observers = names.map { name in
             Task { [weak self] in
                 for await _ in NotificationCenter.default.notifications(named: name) {
-                    self?.restartIfNeeded()
+                    self?.startIfNeeded()
                 }
             }
         }
     }
 
-    private func restartIfNeeded() {
-        guard !engine.isRunning else { return }
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-            try engine.start()
-        } catch {
-            logger.error("Audio engine restart failed: \(error.localizedDescription)")
+    /// Activates the session without blocking the main thread, then starts the engine.
+    /// The engine is only started after activation: starting it first would activate the
+    /// session synchronously.
+    private func startIfNeeded() {
+        guard !engine.isRunning, !isStarting else { return }
+        isStarting = true
+        Task {
+            defer { isStarting = false }
+            do {
+                guard try await AVAudioSession.sharedInstance().activate(options: []) else {
+                    logger.error("Audio session was not activated")
+                    return
+                }
+                try engine.start()
+            } catch {
+                logger.error("Audio engine start failed: \(error.localizedDescription)")
+            }
         }
     }
 }

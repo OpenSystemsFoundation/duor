@@ -10,6 +10,24 @@ enum DoorScreen: Equatable, Sendable {
     case single
 }
 
+/// Whether the door can be swiped (Settings, "Swipe mode").
+///
+/// On a device with a hinge (the iPhone Duo, or any other foldable) the hinge opens the door, so
+/// swiping is off until the user turns it on. Without a hinge, swiping is the only way in, so it is
+/// always on. A choice the user has saved always wins on a hinge device.
+enum SwipeMode {
+    static let storageKey = "swipeMode"
+
+    /// What the setting shows before the user has touched it.
+    static func isOnByDefault(hasHinge: Bool) -> Bool { !hasHinge }
+
+    /// Whether swiping moves the door. `saved` is nil until the user changes the setting.
+    static func isOn(saved: Bool?, hasHinge: Bool) -> Bool {
+        guard hasHinge else { return true }
+        return saved ?? isOnByDefault(hasHinge: hasHinge)
+    }
+}
+
 /// Where the door is, when it can be moved by the hinge or by a swipe.
 ///
 /// The hinge moves the door until the user swipes. From then on the swipe does, until the two

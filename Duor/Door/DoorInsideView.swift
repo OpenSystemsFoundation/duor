@@ -8,8 +8,8 @@ import SwiftUI
 ///
 /// On a real iPhone Duo the phone half that swings open *is* the door leaf, so only that lag and
 /// bounce are drawn on top of the physical motion, plus however much further a swipe has closed
-/// the door. Where nothing moves physically (the Simulator, the cover display, phones without a
-/// hinge) the whole swing is drawn.
+/// the door. In the Simulator, where nothing moves physically, the whole swing is drawn. (Single
+/// screens slide the door aside instead: see `DoorSlideView`.)
 struct DoorInsideView: View {
     let look: DoorLook
     /// Door angle: 0 shut, 180 flat open. The hinge angle, unless a swipe has moved the door.
@@ -30,11 +30,7 @@ struct DoorInsideView: View {
     @State private var hasSwungIn = false
 
     private var openness: Double { min(max(doorDegrees / 180, 0), 1) }
-    /// How lit the scene is: dark when just cracked open, fully lit from about two-thirds open.
-    private var light: Double {
-        let t = min(max((openness - 0.06) / 0.6, 0), 1)
-        return t * t * (3 - 2 * t)
-    }
+    private var light: Double { DoorwayLight.amount(openness: openness) }
 
     var body: some View {
         GeometryReader { proxy in

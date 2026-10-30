@@ -86,6 +86,15 @@ struct DoorwayArt: View {
     }
 }
 
+/// How lit the scene beyond the door is, for how open the door is (0...1): dark when just cracked
+/// open, fully lit from about two-thirds open.
+enum DoorwayLight {
+    static func amount(openness: Double) -> Double {
+        let t = min(max((openness - 0.06) / 0.6, 0), 1)
+        return t * t * (3 - 2 * t)
+    }
+}
+
 #Preview {
     DoorwayArt(look: DoorLook(style: .oak, hardware: .brass, scene: .beach), light: 1)
         .ignoresSafeArea()

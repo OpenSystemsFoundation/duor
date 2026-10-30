@@ -109,6 +109,36 @@ enum DoorSwipe {
     }
 }
 
+/// How a swiped door looks on a single screen: instead of swinging on its hinge, it slides aside.
+///
+/// Swiping the door open slides it off the screen's leading edge, lifted a little off the frame,
+/// until the whole doorframe shows. Swiping it shut slides it back over the frame until it lands.
+struct DoorSlide: Equatable, Sendable {
+    /// How much bigger the door is drawn while it's lifted off the frame.
+    static let lift = 0.04
+    /// The lift is full once the door has slid this far (0...1 of the screen).
+    static let liftDistance = 0.25
+    /// Width (points) of the shadow the door casts on the frame along its trailing edge.
+    static let shadowWidth = 28.0
+
+    /// Door angle: 0 shut, 180 flat open.
+    var degrees: Double
+
+    /// How far the door has slid off the screen: 0 shut, 1 gone.
+    var uncovered: Double { min(max(degrees / 180, 0), 1) }
+
+    var isOpen: Bool { uncovered > 0 }
+
+    /// How big the door is drawn: lifted while it slides, flat on the frame when shut.
+    var scale: Double { 1 + Self.lift * min(uncovered / Self.liftDistance, 1) }
+
+    /// How far (points) the door is moved toward the leading edge, on a screen `width` wide.
+    /// At `uncovered == 1` the door, grown by `scale` about its center, and its shadow are just off screen.
+    func offset(width: Double) -> Double {
+        -uncovered * (width * (1 + scale) / 2 + Self.shadowWidth)
+    }
+}
+
 /// The door after the user lets go: it keeps the swipe's speed, slowed by friction, until it
 /// stops, hits the open stop, or bangs shut. A slow door that's nearly shut swings itself shut.
 struct DoorFling: Equatable, Sendable {

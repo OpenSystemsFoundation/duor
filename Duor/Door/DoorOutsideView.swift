@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// The outside face of the door, shown while it's shut. Tap to knock. (Swiping to open is
-/// handled by `RootView`, since this view is swapped out as the door opens.)
+/// The outside face of the door, filling the screen while it's shut. Tap to knock. (Swiping to
+/// open is handled by `RootView`, since the door slides off the screen as it opens.)
 struct DoorOutsideView: View {
     let look: DoorLook
     /// Latest door feedback, for the knock and close shakes.

@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Shows the outside of the door when it's shut and the inside when it's open. The door opens by
-/// unfolding the phone, or by swiping (left opens, right closes) on any screen.
+/// Shows the door. On the iPhone Duo's inner display it swings open with the phone; on a single
+/// screen (the cover display, or a phone without a hinge) a swipe slides it off the doorframe.
+/// Swiping left opens, swiping right closes, on any screen.
 struct RootView: View {
     @State private var controller = DoorController()
     @State private var isShowingSettings = false
@@ -49,29 +50,29 @@ struct RootView: View {
     private var door: some View {
         GeometryReader { proxy in
             let isInnerDisplay = isInnerDisplay(proxy)
-            // A swiped-open door shows its inside on any screen.
-            let showsInside = isInnerDisplay || (controller.isSwiped && !controller.isClosed)
             let turns = DeviceFixedTurns.quarterTurns(
                 screen: proxy.size, isInnerDisplay: isInnerDisplay, landscape: deviceOrientation.lastLandscape)
             ZStack {
                 DeviceFixed(quarterTurns: turns) { _, crease in
-                    if showsInside {
+                    if isInnerDisplay {
+                        // One half of the phone is the door: it swings on the hinge.
                         DoorInsideView(
-                            look: look, doorDegrees: controller.angle,
-                            hingeDegrees: isInnerDisplay ? controller.hinge?.degrees : nil, crease: crease,
-                            isSwiped: controller.isSwiped,
-                            simulatesSwing: !isInnerDisplay || Self.isSimulator, catLovers: catLovers,
-                            onClose: canSwipe ? { controller.swing(open: false) } : nil)
+                            look: look, doorDegrees: controller.angle, hingeDegrees: controller.hinge?.degrees,
+                            crease: crease, isSwiped: controller.isSwiped, simulatesSwing: Self.isSimulator,
+                            catLovers: catLovers, onClose: canSwipe ? { controller.swing(open: false) } : nil)
                     } else {
-                        DoorOutsideView(
-                            look: look, feedback: controller.feedback, onKnock: controller.knock,
-                            onOpen: canSwipe ? { controller.swing(open: true) } : nil)
+                        // One flat screen: a swipe slides the door off the doorframe and back.
+                        DoorSlideView(
+                            look: look, doorDegrees: controller.isSwiped ? controller.angle : 0,
+                            feedback: controller.feedback, catLovers: catLovers, onKnock: controller.knock,
+                            onOpen: canSwipe ? { controller.swing(open: true) } : nil,
+                            onClose: canSwipe ? { controller.swing(open: false) } : nil)
                     }
                 }
                 .transition(.opacity)
             }
-            .animation(.easeInOut(duration: 0.2), value: showsInside)
-            // On the whole screen, not on either face: the face changes mid-swipe as the door opens.
+            .animation(.easeInOut(duration: 0.2), value: isInnerDisplay)
+            // On the whole screen, not on the door: the door slides off the screen mid-swipe.
             .contentShape(.rect)
             .simultaneousGesture(swipe(screen: proxy.size, quarterTurns: turns), including: canSwipe ? .all : .subviews)
             .onChange(of: isInnerDisplay, initial: true) { _, isInner in

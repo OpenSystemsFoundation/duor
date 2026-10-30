@@ -11,10 +11,20 @@ struct RootView: View {
     @AppStorage(InsideScene.storageKey) private var scene: InsideScene = .livingRoom
     @AppStorage(SceneLife.catLoversKey) private var catLovers = false
     @AppStorage("hasOpenedDoor") private var hasOpenedDoor = false
-    @AppStorage("swipeMode") private var swipeMode = true
+    /// Nil until the user changes "Swipe mode", so the default can follow whether there's a hinge.
+    @AppStorage(SwipeMode.storageKey) private var savedSwipeMode: Bool?
 
-    /// Swiping is the only way in without a hinge, so it can only be turned off on a foldable.
-    private var canSwipe: Bool { swipeMode || !controller.hasHardwareHinge }
+    /// Off by default on a foldable (the hinge opens the door); always on without a hinge.
+    private var canSwipe: Bool {
+        SwipeMode.isOn(saved: savedSwipeMode, hasHinge: controller.hasHardwareHinge)
+    }
+
+    /// The Settings toggle: shows the device's default until the user picks, then saves the pick.
+    private var swipeMode: Binding<Bool> {
+        Binding(
+            get: { savedSwipeMode ?? SwipeMode.isOnByDefault(hasHinge: controller.hasHardwareHinge) },
+            set: { savedSwipeMode = $0 })
+    }
 
     private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
 
@@ -99,7 +109,7 @@ struct RootView: View {
         .sheet(isPresented: $isShowingSettings) {
             // Unfolded: the hinge is open well past halfway (folded or no hinge: four tiles per row).
             SettingsView(
-                style: $style, hardware: $hardware, scene: $scene, catLovers: $catLovers, swipeMode: $swipeMode,
+                style: $style, hardware: $hardware, scene: $scene, catLovers: $catLovers, swipeMode: swipeMode,
                 hasHinge: controller.hasHardwareHinge, isUnfolded: (controller.hinge?.degrees ?? 0) > 100)
         }
         // Paused while Settings is open so browsing doesn't creak.

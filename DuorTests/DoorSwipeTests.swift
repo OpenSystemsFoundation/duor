@@ -155,6 +155,24 @@ struct DoorSwipeTests {
         #expect(events.contains(.closed(.gentle)))
     }
 
+    // MARK: Swipe mode
+
+    @Test func swipeModeIsOffByDefaultWithAHinge() {
+        #expect(!SwipeMode.isOnByDefault(hasHinge: true))
+        #expect(!SwipeMode.isOn(saved: nil, hasHinge: true))
+    }
+
+    @Test func swipeModeKeepsTheUsersChoiceWithAHinge() {
+        #expect(SwipeMode.isOn(saved: true, hasHinge: true))
+        #expect(!SwipeMode.isOn(saved: false, hasHinge: true))
+    }
+
+    @Test func swipeModeIsAlwaysOnWithoutAHinge() {
+        #expect(SwipeMode.isOnByDefault(hasHinge: false))
+        #expect(SwipeMode.isOn(saved: nil, hasHinge: false))
+        #expect(SwipeMode.isOn(saved: false, hasHinge: false))
+    }
+
     // MARK: Interpreter
 
     @Test func restartTakesTheNextSampleAsTheStart() {

@@ -163,7 +163,7 @@ Knocking is only enabled while closed (you knock on a closed door).
 - **Single screen** (cover display, no hinge): the whole swing is drawn and the swipe can take the door from shut to flat. It hands back to the hinge once swiped shut.
 - **Changing screens** hands the door back to the hinge. If the angle jumps (swiped open on the cover, then unfolded), the interpreter restarts instead of hearing a slam.
 
-On release, `DoorFling` carries the door on with the swipe's speed under friction, so a flick slams it and a push leaves it ajar; within 10° of shut a slow door swings itself shut gently. The fling and the drag feed the interpreter like hinge samples (~60 Hz), so creaks, the open stop and close kinds work unchanged. Without a hinge, a "Swipe left to open the door" hint shows until the door has been opened once. VoiceOver users get "Open door" and "Close door" actions. On a foldable, swiping can be turned off in Settings (§4.3).
+On release, `DoorFling` carries the door on with the swipe's speed under friction, so a flick slams it and a push leaves it ajar; within 10° of shut a slow door swings itself shut gently. The fling and the drag feed the interpreter like hinge samples (~60 Hz), so creaks, the open stop and close kinds work unchanged. Without a hinge, a "Swipe left to open the door" hint shows until the door has been opened once. VoiceOver users get "Open door" and "Close door" actions. On a foldable, swiping is off until turned on in Settings (§4.3).
 
 ### 4.3 Settings
 
@@ -174,7 +174,7 @@ A gear button opens a sheet with three picture pickers. Choices persist with `@A
 | **Door** | Oak, Cottage, Barn, Castle, Spaceship, Metal | Picking a door resets the hardware and the scene to the door's own. Shown as a grid so every door is always visible: four per row folded (or without a hinge), all in one row unfolded. |
 | **Hardware** | Iron, Brass, Chrome, Copper, Bronze | Colors and shine of hinges, handle, studs and strike plate, *and* the pitch and ring of the latch and hinges. |
 | **Behind the door** | Living room, Great hall, Beach, Forest, Outer space, Brick wall | Picking a door also picks its scene (Oak → living room, Cottage → beach, Barn → forest, Castle → great hall, Spaceship → outer space, Metal → brick wall). |
-| **Swipe mode** | On (default), off | Whether the door can be swiped open and shut (§4.2). Only shown with a hinge: without one, swiping is the only way in, so it stays on. Turning it off hands a swiped door back to the hinge. |
+| **Swipe mode** | Off (default with a hinge), on | Whether the door can be swiped open and shut (§4.2). Only shown with a hinge: without one, swiping is the only way in, so it stays on. With a hinge the hinge opens the door, so swiping starts off; a choice the user saved is kept (`SwipeMode`). Whether there is a hinge is detected at runtime from the first `onHingeChange` sample, not from the device model, so any foldable counts. Turning it off hands a swiped door back to the hinge. |
 
 Hinge updates are paused (`isEnabled: false`) while the sheet is open, so browsing doesn't creak. Debug builds open the sheet on launch with `-showSettings YES` (for screenshots and UI tests); all three settings can also be passed as launch arguments, e.g. `-doorStyle castle -hardware bronze -insideScene space`.
 

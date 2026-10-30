@@ -39,7 +39,8 @@ struct DoorSlideView: View {
                     // The shadow the lifted door casts on the frame beside it.
                     .background(alignment: .trailing) {
                         LinearGradient(
-                            colors: [.black.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing)
+                            colors: [.black.opacity(0.5), .clear], startPoint: .leading, endPoint: .trailing
+                        )
                         .frame(width: DoorSlide.shadowWidth)
                         .offset(x: DoorSlide.shadowWidth)
                         .opacity(slide.isOpen ? 1 : 0)

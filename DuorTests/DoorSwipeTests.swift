@@ -1,3 +1,4 @@
+import CoreGraphics
 import Testing
 
 @testable import Duor
@@ -220,5 +221,45 @@ struct DoorSwipeTests {
         var interpreter = DoorMotionInterpreter()
         _ = interpreter.ingest(HingeReading(degrees: 10, status: .closed, timestamp: 0))
         #expect(interpreter.isLatched)
+    }
+
+    // MARK: Split View
+
+    @Test func windowDoorRestsShutWhateverTheHinge() {
+        var drive = DoorDrive(screen: .window, hinge: 180)
+        #expect(drive.degrees == 0)
+        #expect(!drive.followsHinge)
+        drive.swipe(to: 120)
+        drive.settle()
+        // Open, and it stays open: the hinge doesn't hold this door.
+        #expect(drive.degrees == 120)
+        drive.hinge = 90
+        drive.settle()
+        #expect(drive.degrees == 120)
+        drive.swipe(to: 0)
+        drive.settle()
+        #expect(!drive.isSwiped)
+        #expect(drive.degrees == 0)
+    }
+
+    @Test func movingIntoAWindowShutsTheDoor() {
+        var drive = DoorDrive(screen: .inner, hinge: 180)
+        let jumped = drive.move(to: .window)
+        #expect(jumped)
+        #expect(drive.degrees == 0)
+    }
+
+    @Test func splitViewShowsTheFrontOfTheDoor() {
+        #expect(DoorScreen.current(hasHinge: true, fillsScreen: false, hasFold: false, isFullyOpen: true) == .window)
+        #expect(DoorScreen.current(hasHinge: true, fillsScreen: true, hasFold: true, isFullyOpen: true) == .inner)
+        #expect(DoorScreen.current(hasHinge: true, fillsScreen: true, hasFold: false, isFullyOpen: false) == .single)
+        #expect(DoorScreen.current(hasHinge: false, fillsScreen: false, hasFold: false, isFullyOpen: false) == .single)
+    }
+
+    @Test func windowFillsTheScreenEitherWayRound() {
+        let screen = CGSize(width: 1017, height: 700)
+        #expect(WindowFit.fills(window: screen, screen: screen))
+        #expect(WindowFit.fills(window: CGSize(width: 700, height: 1017), screen: screen))
+        #expect(!WindowFit.fills(window: CGSize(width: 508, height: 700), screen: screen))
     }
 }

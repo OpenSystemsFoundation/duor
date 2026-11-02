@@ -60,12 +60,11 @@ final class DoorController {
         hinge = reading
         drive.hinge = reading.degrees
         if !isSwiping { drive.settle() }
-        ingest(drive.isSwiped ? .simulated(degrees: drive.degrees, at: reading.timestamp) : reading)
+        ingest(drive.followsHinge ? reading : .simulated(degrees: drive.degrees, at: reading.timestamp))
     }
 
     /// Which screen the door is on. On a phone without a hinge, always the single screen.
-    func screenChanged(isInnerDisplay: Bool) {
-        let screen: DoorScreen = isInnerDisplay ? .inner : .single
+    func screenChanged(to screen: DoorScreen) {
         guard screen != drive.screen else { return }
         stopFling()
         swipeStart = nil
@@ -83,7 +82,11 @@ final class DoorController {
     private func restartAfterJump() {
         sounds.setCreak(velocity: 0)
         interpreter.restart()
-        ingest(hinge ?? .simulated(degrees: drive.degrees, at: now))
+        if let hinge, drive.followsHinge {
+            ingest(hinge)
+        } else {
+            ingest(.simulated(degrees: drive.degrees, at: now))
+        }
     }
 
     // MARK: Swiping

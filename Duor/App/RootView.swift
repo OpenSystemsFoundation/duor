@@ -6,8 +6,11 @@ import SwiftUI
 struct RootView: View {
     @State private var controller = DoorController()
     @State private var isShowingSettings = false
-    /// The iPhone Duo's inner display, as decided in `door`. Places the settings button.
-    @State private var isOnInnerDisplay = false
+    /// Whether the window fills the screen (not in Split View), from `DoorHostingController`.
+    var windowFit = WindowFit()
+    /// The screen the door is on, as decided in `door`. Places the settings button.
+    @State private var screen: DoorScreen = .single
+    private var isOnInnerDisplay: Bool { screen == .inner }
     @State private var deviceOrientation = DeviceOrientationMonitor()
     @AppStorage(DoorStyle.storageKey) private var style: DoorStyle = .oak
     @AppStorage(HardwareFinish.storageKey) private var hardware: HardwareFinish = .iron
@@ -17,9 +20,10 @@ struct RootView: View {
     /// Nil until the user changes "Swipe mode", so the default can follow whether there's a hinge.
     @AppStorage(SwipeMode.storageKey) private var savedSwipeMode: Bool?
 
-    /// Off by default on a foldable (the hinge opens the door); always on without a hinge.
+    /// Off by default on a foldable (the hinge opens the door); always on without a hinge or in Split View.
     private var canSwipe: Bool {
-        SwipeMode.isOn(saved: savedSwipeMode, hasHinge: controller.hasHardwareHinge)
+        // In Split View the phone is already open, so only a swipe can open the door.
+        screen == .window || SwipeMode.isOn(saved: savedSwipeMode, hasHinge: controller.hasHardwareHinge)
     }
 
     /// The Settings toggle: shows the device's default until the user picks, then saves the pick.
@@ -56,7 +60,8 @@ struct RootView: View {
 
     private var door: some View {
         GeometryReader { proxy in
-            let isInnerDisplay = isInnerDisplay(proxy)
+            let screen = doorScreen(proxy)
+            let isInnerDisplay = screen == .inner
             let turns = DeviceFixedTurns.quarterTurns(
                 screen: proxy.size, isInnerDisplay: isInnerDisplay, landscape: deviceOrientation.lastLandscape)
             ZStack {
@@ -82,9 +87,9 @@ struct RootView: View {
             // On the whole screen, not on the door: the door slides off the screen mid-swipe.
             .contentShape(.rect)
             .simultaneousGesture(swipe(screen: proxy.size, quarterTurns: turns), including: canSwipe ? .all : .subviews)
-            .onChange(of: isInnerDisplay, initial: true) { _, isInner in
-                controller.screenChanged(isInnerDisplay: isInner)
-                isOnInnerDisplay = isInner
+            .onChange(of: screen, initial: true) { _, screen in
+                controller.screenChanged(to: screen)
+                self.screen = screen
             }
         }
         // Dark, never white, if anything ever shows behind the door (crossfades, shakes).
@@ -145,16 +150,18 @@ struct RootView: View {
         #endif
     }
 
-    /// Whether this is the iPhone Duo's inner display, where the door is open as far as the phone.
+    /// Which screen the door is on: the iPhone Duo's inner display (where the door is open as far
+    /// as the phone), part of it in Split View, or one flat screen.
     ///
     /// The system decides which screen is on (a slightly opened phone often stays on the cover
     /// display), so follow the screen, not the hinge. Only the inner display reports a fold region
     /// (inactive when flat); the cover never does. The interface may also rotate on the inner
     /// display, so the screen's shape can't be used.
-    private func isInnerDisplay(_ proxy: GeometryProxy) -> Bool {
-        guard controller.hasHardwareHinge else { return false }
-        let hasFold = !proxy.reservedRegions(kind: .division, options: .includeInactive).isEmpty
-        return hasFold || controller.hinge?.status == .fullyOpen
+    private func doorScreen(_ proxy: GeometryProxy) -> DoorScreen {
+        DoorScreen.current(
+            hasHinge: controller.hasHardwareHinge, fillsScreen: windowFit.fillsScreen,
+            hasFold: !proxy.reservedRegions(kind: .division, options: .includeInactive).isEmpty,
+            isFullyOpen: controller.hinge?.status == .fullyOpen)
     }
 
     /// Swiping the door open or shut, measured across the door (which `DeviceFixed` may have turned).

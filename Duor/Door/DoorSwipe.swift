@@ -8,6 +8,24 @@ enum DoorScreen: Equatable, Sendable {
     /// One flat screen: the cover display, or a phone without a hinge. The whole swing is drawn,
     /// so a swipe can take the door anywhere from shut to flat open.
     case single
+    /// Part of an unfolded iPhone Duo's inner display (Split View): one flat screen like `single`,
+    /// showing the front of the door, but the phone is open, so the hinge doesn't hold the door.
+    /// It rests shut, and only a swipe opens it.
+    case window
+}
+
+extension DoorScreen {
+    /// Which screen the door is on.
+    /// - Parameters:
+    ///   - fillsScreen: The app's window fills the display (false in Split View).
+    ///   - hasFold: The window reports the inner display's fold region.
+    ///   - isFullyOpen: The hinge reports the phone fully open.
+    static func current(hasHinge: Bool, fillsScreen: Bool, hasFold: Bool, isFullyOpen: Bool) -> DoorScreen {
+        guard hasHinge else { return .single }
+        // Sharing the inner display: the front of the door, like the cover display.
+        guard fillsScreen else { return .window }
+        return hasFold || isFullyOpen ? .inner : .single
+    }
 }
 
 /// Whether the door can be swiped (Settings, "Swipe mode").
@@ -44,9 +62,15 @@ struct DoorDrive: Equatable, Sendable {
 
     var isSwiped: Bool { swiped != nil }
 
+    /// Whether the hinge reading is the door angle (otherwise the door is wherever `degrees` says).
+    var followsHinge: Bool { !isSwiped && screen != .window }
+
+    /// Where the hinge holds the door when nobody swipes. In a window it doesn't: the door rests shut.
+    private var restingDegrees: Double { screen == .window ? 0 : hinge }
+
     /// The door angle: 0 shut, 180 flat open.
     var degrees: Double {
-        guard let swiped else { return hinge }
+        guard let swiped else { return restingDegrees }
         return screen == .inner ? min(swiped, hinge) : swiped
     }
 
@@ -61,14 +85,14 @@ struct DoorDrive: Equatable, Sendable {
 
     /// Hands the door back to the hinge if they agree: on the inner display once the door is as
     /// open as the phone (swiped open, or the phone folded down to meet it); on a single screen
-    /// once the door is back where the hinge has it (shut, on a folded phone). Call this whenever
-    /// the user isn't swiping.
+    /// once the door is back where the hinge has it (shut, on a folded phone); in a window once
+    /// it's shut. Call this whenever the user isn't swiping.
     mutating func settle() {
         guard let swiped else { return }
         let agrees =
             switch screen {
             case .inner: swiped >= hinge - Self.tolerance
-            case .single: swiped <= hinge + Self.tolerance
+            case .single, .window: swiped <= restingDegrees + Self.tolerance
             }
         if agrees { self.swiped = nil }
     }

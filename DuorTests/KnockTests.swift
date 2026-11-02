@@ -58,6 +58,18 @@ struct KnockTests {
         #expect(controller.feedback == feedback)
     }
 
+    @Test func doorInSplitViewCanBeKnockedWithThePhoneOpen() {
+        let sounds = SoundRecorder()
+        let controller = DoorController(sounds: sounds)
+        controller.hardwareHingeChanged(.simulated(degrees: 0, at: 0))
+        controller.hardwareHingeChanged(.simulated(degrees: 180, at: 1))
+        controller.screenChanged(to: .window)
+        controller.hardwareHingeChanged(.simulated(degrees: 179, at: 2))
+        #expect(controller.isClosed)
+        controller.knock(at: .center)
+        #expect(sounds.knocks.count == 1)
+    }
+
     // MARK: Tap to spot
 
     @Test func tapMapsOntoTheLeaf() {

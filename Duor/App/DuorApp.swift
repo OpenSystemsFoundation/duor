@@ -23,7 +23,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     ) {
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
-        window.rootViewController = DoorHostingController(rootView: RootView())
+        window.rootViewController = DoorHostingController()
         window.makeKeyAndVisible()
         self.window = window
     }
@@ -36,5 +36,39 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 /// Info.plist orientation list). If the system lifts the lock (e.g. Split View),
 /// `DeviceFixed` still turns the door back into place.
 final class DoorHostingController: UIHostingController<RootView> {
+    private let windowFit: WindowFit
+
+    init() {
+        let windowFit = WindowFit()
+        self.windowFit = windowFit
+        super.init(rootView: RootView(windowFit: windowFit))
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
     override var prefersInterfaceOrientationLocked: Bool { true }
+
+    /// Split View shares the screen: tell the door it's in a window.
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard let screen = view.window?.windowScene?.screen else { return }
+        let fills = WindowFit.fills(window: view.bounds.size, screen: screen.bounds.size)
+        if fills != windowFit.fillsScreen { windowFit.fillsScreen = fills }
+    }
+}
+
+/// Whether the app's window fills its screen. Not in Split View, where it shares the screen.
+@Observable
+final class WindowFit {
+    var fillsScreen = true
+
+    /// Whether a window of `window` size fills a screen of `screen` size, either way round.
+    static func fills(window: CGSize, screen: CGSize) -> Bool {
+        let windowSides = [window.width, window.height].sorted()
+        let screenSides = [screen.width, screen.height].sorted()
+        return abs(windowSides[0] - screenSides[0]) < 1 && abs(windowSides[1] - screenSides[1]) < 1
+    }
 }

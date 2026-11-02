@@ -37,7 +37,7 @@ struct DoorInsideView: View {
             let split = CreaseSplit(size: proxy.size, crease: crease)
             ZStack(alignment: .topLeading) {
                 // The crease, when the system reserves one, is the shadowed gap between door and frame.
-                Color(red: 0.1, green: 0.07, blue: 0.05)
+                Color.doorShadow
 
                 DoorwayArt(look: look, light: light, catLovers: catLovers)
                     .frame(width: split.doorway.width, height: split.doorway.height)
@@ -66,14 +66,7 @@ struct DoorInsideView: View {
                 hasSwungIn = true
             }
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Open door"))
-        .accessibilityValue(Text("Open \(Int(doorDegrees)) degrees"))
-        .accessibilityActions {
-            if let onClose {
-                Button("Close door", action: onClose)
-            }
-        }
+        .openDoorAccessibility(degrees: doorDegrees, onClose: onClose)
     }
 }
 

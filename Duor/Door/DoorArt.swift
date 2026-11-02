@@ -9,6 +9,12 @@ enum DoorGeometry {
     static let latchHeight: CGFloat = 0.45
 }
 
+extension Color {
+    /// The dark gap around the door: the crease between door and frame, and anything that shows
+    /// behind the door during crossfades and shakes. Never white.
+    static let doorShadow = Color(red: 0.1, green: 0.07, blue: 0.05)
+}
+
 /// Which side of the leaf is showing. The peephole is only on the outside.
 enum DoorFace {
     case outside

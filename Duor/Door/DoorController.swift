@@ -15,6 +15,21 @@ struct DoorFeedback: Equatable {
     var id: Int
 }
 
+/// Time as `DoorController` sees it: the system clock in the app, a hand-wound one in tests.
+protocol DoorClock: AnyObject {
+    /// Monotonic seconds, on the same scale as hinge reading timestamps (system uptime).
+    var now: TimeInterval { get }
+    func sleep(for duration: Duration) async throws
+}
+
+final class SystemDoorClock: DoorClock {
+    var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
+    func sleep(for duration: Duration) async throws {
+        try await Task.sleep(for: duration)
+    }
+}
+
 /// Owns door state. The door is moved by the hinge or by swiping (see `DoorDrive`); its angle is
 /// fed to the interpreter, whose events become sound and feedback.
 @Observable
@@ -36,6 +51,7 @@ final class DoorController {
     private var drive = DoorDrive()
     @ObservationIgnored private var interpreter = DoorMotionInterpreter()
     @ObservationIgnored private let sounds: any DoorSoundPlaying
+    @ObservationIgnored private let clock: any DoorClock
     @ObservationIgnored private var creakFadeTask: Task<Void, Never>?
     @ObservationIgnored private var settleTask: Task<Void, Never>?
     @ObservationIgnored private var flingTask: Task<Void, Never>?
@@ -45,8 +61,18 @@ final class DoorController {
 
     private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Duor", category: "hinge")
 
-    init(sounds: any DoorSoundPlaying = DoorAudioEngine()) {
+    /// How often a flung door moves.
+    static let flingStep = Duration.milliseconds(16)
+    /// How long the hinge must be still before a nearly shut door latches by itself.
+    static let settleDelay = Duration.milliseconds(350)
+    /// How long the creak keeps going after the last movement.
+    static let creakFadeDelay = Duration.milliseconds(150)
+    /// How fast the door swings open when asked to (accessibility): about halfway open.
+    static let swingOpenSpeed = 240.0
+
+    init(sounds: any DoorSoundPlaying = DoorAudioEngine(), clock: any DoorClock = SystemDoorClock()) {
         self.sounds = sounds
+        self.clock = clock
     }
 
     func apply(sound profile: SoundProfile) {
@@ -114,7 +140,7 @@ final class DoorController {
         guard swipeStart == nil else { return }
         stopFling()
         startInterpreterIfNeeded()
-        fling(velocity: open ? 240 : -120)
+        fling(velocity: open ? Self.swingOpenSpeed : -DoorFling.speed(toTravel: drive.degrees))
     }
 
     /// A knock on `spot` of the door's outside face. Where it lands changes how it sounds.
@@ -124,16 +150,16 @@ final class DoorController {
         emit(.knock)
     }
 
-    private var now: TimeInterval { ProcessInfo.processInfo.systemUptime }
+    private var now: TimeInterval { clock.now }
 
     private var isSwiping: Bool { swipeStart != nil || flingTask != nil }
 
     private func fling(velocity: Double) {
         var fling = DoorFling(degrees: drive.degrees, velocity: velocity, range: drive.range)
-        flingTask = Task { [weak self] in
-            var last = ProcessInfo.processInfo.systemUptime
+        flingTask = Task { [weak self, clock] in
+            var last = clock.now
             while !fling.isDone {
-                try? await Task.sleep(for: .milliseconds(16))
+                try? await clock.sleep(for: Self.flingStep)
                 guard !Task.isCancelled, let self else { return }
                 let time = now
                 fling.step(time - last)
@@ -172,10 +198,10 @@ final class DoorController {
     private func scheduleSettle() {
         settleTask?.cancel()
         guard !interpreter.isLatched else { return }
-        settleTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(350))
+        settleTask = Task { [weak self, clock] in
+            try? await clock.sleep(for: Self.settleDelay)
             guard !Task.isCancelled, let self else { return }
-            for event in interpreter.settle(at: ProcessInfo.processInfo.systemUptime) {
+            for event in interpreter.settle(at: clock.now) {
                 handle(event)
             }
             isClosed = interpreter.isLatched
@@ -217,8 +243,8 @@ final class DoorController {
     /// Hinge updates stop arriving when the door stops moving, so fade the creak on a timer.
     private func scheduleCreakFade() {
         creakFadeTask?.cancel()
-        creakFadeTask = Task { [sounds] in
-            try? await Task.sleep(for: .milliseconds(150))
+        creakFadeTask = Task { [sounds, clock] in
+            try? await clock.sleep(for: Self.creakFadeDelay)
             guard !Task.isCancelled else { return }
             sounds.setCreak(velocity: 0)
         }

@@ -9,8 +9,6 @@ enum DoorStyle: String, CaseIterable, Identifiable, Sendable {
     case spaceship
     case metal
 
-    static let storageKey = "doorStyle"
-
     var id: String { rawValue }
 
     var displayName: LocalizedStringResource {
@@ -147,8 +145,6 @@ enum HardwareFinish: String, CaseIterable, Identifiable, Sendable {
     case copper
     case bronze
 
-    static let storageKey = "hardware"
-
     var id: String { rawValue }
 
     var displayName: LocalizedStringResource {
@@ -201,8 +197,6 @@ enum InsideScene: String, CaseIterable, Identifiable, Sendable {
     case forest
     case space
     case brickWall
-
-    static let storageKey = "insideScene"
 
     var id: String { rawValue }
 

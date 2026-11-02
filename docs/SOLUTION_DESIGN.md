@@ -167,7 +167,7 @@ On release, `DoorFling` carries the door on with the swipe's speed under frictio
 
 ### 4.3 Settings
 
-A gear button opens a sheet with three picture pickers. Choices persist with `@AppStorage` and combine into one `DoorLook` (style + hardware + scene) that drives both the art and the synth.
+A gear button opens a sheet with three picture pickers. Choices live in `DoorSettings` (saved to `UserDefaults`) and combine into one `DoorLook` (style + hardware + scene) that drives both the art and the synth.
 
 | Setting | Options | Notes |
 |---|---|---|
@@ -233,15 +233,17 @@ The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`Sw
 | `Hinge/HingeReading.swift` | Our own `Sendable` value type for one hinge sample (degrees, status, monotonic timestamp). Decouples logic from `DeviceHinge` so it can be unit tested and simulated. |
 | `Door/DoorMotionInterpreter.swift` | **Pure** state machine: `ingest(HingeReading) -> [DoorEvent]`. Computes smoothed velocity, emits `unlatched`, `swing(velocity)`, `hitOpenStop(speed)`, `closed(CloseKind)`. Fully covered by unit tests. |
 | `Door/DoorSwipe.swift` | **Pure** swipe logic: `DoorDrive` (hinge or swipe, per screen), `DoorSwipe` (points → degrees), `DoorFling` (momentum after release), `DoorSlide` (how the single-screen door slides). Unit tested. |
-| `Door/DoorController.swift` | `@Observable` glue: holds the latest hinge reading and the `DoorDrive`, runs the fling, feeds the door angle to the interpreter, maps events → sounds, debounces the creak fade, exposes `isClosed`, `angle`, `isSwiped`. |
-| `Door/DoorStyle.swift` | Style catalogue (enum, `@AppStorage`-backed). Palette + `SoundProfile` per style. |
+| `Door/DoorController.swift` | `@Observable` glue: holds the latest hinge reading and the `DoorDrive`, runs the fling (on an injected `DoorClock`, so tests run without waiting), feeds the door angle to the interpreter, maps events → sounds, debounces the creak fade, exposes `isClosed`, `angle`, `isSwiped`. |
+| `Door/DoorStyle.swift` | Style catalogue: door styles, hardware finishes, scenes. Palette + `SoundProfile` per style. |
 | `Door/DoorArt.swift` | `Canvas`-drawn four-panel leaf (grain, raised panels, iron hinges, knob, peephole) with `hingeSide` mirroring; shared `DoorGeometry` so hinges, knob and strike plate line up across views. |
 | `Door/DoorwayArt.swift` | The fixed half: casing, jambs, strike plate, and the lit room beyond. |
 | `Door/DoorOutsideView.swift` | Cover display: outside face, tap-to-knock with dent and shake. |
 | `Door/DoorSlideView.swift` | Single screen: the doorframe fills the screen; the outside face slides off it when swiped open and back on top when swiped shut. |
 | `Door/DoorInsideView.swift` | Inner display: splits at the crease, leaf inside face + doorway, hinge straps across the crease, light driven by angle. |
+| `Door/Scenes/*` | What's behind the door, one file per scene: its still background (`ScenePainter`), its moving life (`SceneLife`) and its cat. `Scenes.swift` holds the dispatch and the shared visit timing, `Cats.swift` the cat drawing. |
 | `Audio/DoorAudioEngine.swift` | Audio session, `AVAudioEngine` with one `AVAudioSourceNode` that calls `DoorSynth.render`, restart on route change / interruption. Behind the `DoorSoundPlaying` protocol for tests. |
 | `Audio/DSP/*` | The synthesizer: `DoorSynth` (thread hand-off + sound recipes), `ImpactVoice`, `KnockSpot` (how a knock's position shapes it), `CreakVoice`, `ModalBank`, `RoomReverb`, `NoiseSource`, `SoundProfile` (per-style materials). Pure Swift, no AVFoundation, so it is unit tested and renders offline. |
+| `Settings/DoorSettings.swift` | `@Observable` model of everything picked in Settings, saved to `UserDefaults`. Picking a door brings its hardware and scene. |
 | `Settings/SettingsView.swift` | Style picker. |
 
 ### 5.3 Event logic (DoorMotionInterpreter)
@@ -368,7 +370,7 @@ A door type is a case in `DoorStyle` with: a `DoorDesign` (how the leaf is drawn
 | Spaceship | Chamfered hull panel, porthole with stars, glowing light strips, control pad, hazard stripes | Chrome |
 | Metal | Brushed riveted steel, wired-glass window, vent louvre, diamond-plate kick plate, lever handle | Iron |
 
-Ideas for more: saloon doors (two leaves, swing-back wobble), fridge (seal "thwup", light inside), car door (thunk, key chime), window shutters (wind, birds), treasure chest (ta-da), airlock (hiss), haunted door (the creak never quite stops). Scenes: a scene is one painter function in `InsideScenes.swift`.
+Ideas for more: saloon doors (two leaves, swing-back wobble), fridge (seal "thwup", light inside), car door (thunk, key chime), window shutters (wind, birds), treasure chest (ta-da), airlock (hiss), haunted door (the creak never quite stops). Scenes: a scene is one file in `Door/Scenes/` plus a case in `InsideScene`.
 
 ## 8. Testing strategy
 

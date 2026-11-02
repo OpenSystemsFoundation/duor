@@ -83,7 +83,9 @@ nonisolated final class DoorSynth: Sendable {
     /// Fills `output` with mono samples in -1...1.
     func render(into output: UnsafeMutableBufferPointer<Float>) {
         core.withLock { core in
-            inbox.withLock { inbox in
+            // Never wait for the main thread: if it is posting right now, pick its commands up
+            // next buffer (a few milliseconds later).
+            inbox.withLockIfAvailable { inbox in
                 // Both arrays keep their reserved capacity, so the swap never allocates.
                 swap(&core.pending, &inbox.commands)
                 core.creakVelocity = inbox.creakVelocity

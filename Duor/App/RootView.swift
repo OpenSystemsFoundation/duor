@@ -12,28 +12,15 @@ struct RootView: View {
     @State private var screen: DoorScreen = .single
     private var isOnInnerDisplay: Bool { screen == .inner }
     @State private var deviceOrientation = DeviceOrientationMonitor()
-    @AppStorage(DoorStyle.storageKey) private var style: DoorStyle = .oak
-    @AppStorage(HardwareFinish.storageKey) private var hardware: HardwareFinish = .iron
-    @AppStorage(InsideScene.storageKey) private var scene: InsideScene = .livingRoom
-    @AppStorage(SceneLife.catLoversKey) private var catLovers = false
-    @AppStorage("hasOpenedDoor") private var hasOpenedDoor = false
-    /// Nil until the user changes "Swipe mode", so the default can follow whether there's a hinge.
-    @AppStorage(SwipeMode.storageKey) private var savedSwipeMode: Bool?
+    @State private var settings = DoorSettings()
 
     /// Off by default on a foldable (the hinge opens the door); always on without a hinge or in Split View.
     private var canSwipe: Bool {
         // In Split View the phone is already open, so only a swipe can open the door.
-        screen == .window || SwipeMode.isOn(saved: savedSwipeMode, hasHinge: controller.hasHardwareHinge)
+        screen == .window || settings.isSwipeOn(hasHinge: controller.hasHardwareHinge)
     }
 
-    /// The Settings toggle: shows the device's default until the user picks, then saves the pick.
-    private var swipeMode: Binding<Bool> {
-        Binding(
-            get: { savedSwipeMode ?? SwipeMode.isOnByDefault(hasHinge: controller.hasHardwareHinge) },
-            set: { savedSwipeMode = $0 })
-    }
-
-    private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
+    private var look: DoorLook { settings.look }
 
     var body: some View {
         // A navigation stack only for its toolbar: on the iPhone Duo's inner display the settings
@@ -72,12 +59,13 @@ struct RootView: View {
                         DoorInsideView(
                             look: look, doorDegrees: controller.angle, hingeDegrees: controller.hinge?.degrees,
                             crease: crease, isSwiped: controller.isSwiped, simulatesSwing: Self.isSimulator,
-                            catLovers: catLovers, onClose: canSwipe ? { controller.swing(open: false) } : nil)
+                            catLovers: settings.catLovers, onClose: canSwipe ? { controller.swing(open: false) } : nil)
                     } else {
                         // One flat screen: a swipe slides the door off the doorframe and back.
                         DoorSlideView(
                             look: look, doorDegrees: controller.isSwiped ? controller.angle : 0,
-                            feedback: controller.feedback, catLovers: catLovers, onKnock: controller.knock(at:),
+                            feedback: controller.feedback, catLovers: settings.catLovers,
+                            onKnock: controller.knock(at:),
                             onOpen: canSwipe ? { controller.swing(open: true) } : nil,
                             onClose: canSwipe ? { controller.swing(open: false) } : nil)
                     }
@@ -94,7 +82,7 @@ struct RootView: View {
             }
         }
         // Dark, never white, if anything ever shows behind the door (crossfades, shakes).
-        .background(Color(red: 0.1, green: 0.07, blue: 0.05).ignoresSafeArea())
+        .background(Color.doorShadow.ignoresSafeArea())
         .sensoryFeedback(trigger: controller.feedback) { _, feedback in
             switch feedback?.kind {
             case .knock: .impact(weight: .heavy, intensity: 0.9)
@@ -108,15 +96,15 @@ struct RootView: View {
         }
         .overlay(alignment: .bottom) {
             // Without a hinge, swiping is the only way in: say so until the door has been opened.
-            if !controller.hasHardwareHinge && !hasOpenedDoor {
+            if !controller.hasHardwareHinge && !settings.hasOpenedDoor {
                 SwipeHint()
                     .padding(.bottom, 24)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: hasOpenedDoor)
+        .animation(.easeInOut(duration: 0.3), value: settings.hasOpenedDoor)
         .onChange(of: controller.isClosed) { _, isClosed in
-            if !isClosed { hasOpenedDoor = true }
+            if !isClosed { settings.hasOpenedDoor = true }
         }
         .onChange(of: canSwipe) { _, canSwipe in
             if !canSwipe { controller.stopSwiping() }
@@ -124,8 +112,8 @@ struct RootView: View {
         .sheet(isPresented: $isShowingSettings) {
             // Unfolded: the hinge is open well past halfway (folded or no hinge: four tiles per row).
             SettingsView(
-                style: $style, hardware: $hardware, scene: $scene, catLovers: $catLovers, swipeMode: swipeMode,
-                hasHinge: controller.hasHardwareHinge, isUnfolded: (controller.hinge?.degrees ?? 0) > 100)
+                settings: settings, hasHinge: controller.hasHardwareHinge,
+                isUnfolded: (controller.hinge?.degrees ?? 0) > 100)
         }
         // Paused while Settings is open so browsing doesn't creak.
         .onHingeChange(isEnabled: !isShowingSettings) { _, newContext in

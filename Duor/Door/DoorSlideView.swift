@@ -25,14 +25,7 @@ struct DoorSlideView: View {
         GeometryReader { proxy in
             ZStack {
                 DoorwayArt(look: look, light: DoorwayLight.amount(openness: slide.uncovered), catLovers: catLovers)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text("Open door"))
-                    .accessibilityValue(Text("Open \(Int(doorDegrees)) degrees"))
-                    .accessibilityActions {
-                        if let onClose {
-                            Button("Close door", action: onClose)
-                        }
-                    }
+                    .openDoorAccessibility(degrees: doorDegrees, onClose: onClose)
                     .accessibilityHidden(!slide.isOpen)
 
                 DoorOutsideView(look: look, feedback: feedback, onKnock: onKnock, onOpen: onOpen)

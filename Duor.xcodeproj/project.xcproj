@@ -33,13 +33,24 @@
             { "path": "DoorStyle.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorArt.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorwayArt.swift", "target-membership": [ "Duor/compile-sources" ] },
-            { "path": "InsideScenes.swift", "target-membership": [ "Duor/compile-sources" ] },
-            { "path": "SceneLife.swift", "target-membership": [ "Duor/compile-sources" ] },
-            { "path": "SceneCats.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "CatStories.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorOutsideView.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorInsideView.swift", "target-membership": [ "Duor/compile-sources" ] },
             { "path": "DoorSlideView.swift", "target-membership": [ "Duor/compile-sources" ] },
+            {
+              "kind": "group",
+              "path": "Scenes",
+              "children": [
+                { "path": "Scenes.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "Cats.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "LivingRoom.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "GreatHall.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "Beach.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "Forest.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "Space.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "BrickWall.swift", "target-membership": [ "Duor/compile-sources" ] },
+              ],
+            },
           ],
         }, {
           "kind": "group",
@@ -74,6 +85,7 @@
           "path": "Settings",
           "children": [
             { "path": "SettingsView.swift", "target-membership": [ "Duor/compile-sources" ] },
+            { "path": "DoorSettings.swift", "target-membership": [ "Duor/compile-sources" ] },
           ],
         }, {
           "kind": "group",
@@ -96,6 +108,8 @@
         { "path": "OutputFaderTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "CatStoryTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "KnockTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
+        { "path": "DoorSettingsTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
+        { "path": "DoorControllerTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "SpeakerVoicingTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
       ],
     }, {

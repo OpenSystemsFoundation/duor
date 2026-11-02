@@ -3,40 +3,43 @@ import SwiftUI
 /// Pick the door, its hardware, what's behind it, whether a cat lives there, and whether the door
 /// can be swiped. At the bottom: who made it.
 struct SettingsView: View {
-    @Binding var style: DoorStyle
-    @Binding var hardware: HardwareFinish
-    @Binding var scene: InsideScene
-    @Binding var catLovers: Bool
-    @Binding var swipeMode: Bool
+    @Bindable var settings: DoorSettings
     /// Without a hinge, swiping is the only way to open the door, so it can't be turned off.
     var hasHinge = true
     /// Unfolded there's room for every tile in one row; folded, at most four per row.
     var isUnfolded = false
     @Environment(\.dismiss) private var dismiss
 
+    /// The "Swipe mode" toggle: shows the device's default until the user picks, then saves the pick.
+    private var swipeMode: Binding<Bool> {
+        Binding(
+            get: { settings.swipeModeSetting(hasHinge: hasHinge) },
+            set: { settings.savedSwipeMode = $0 })
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section("Door") {
                     PickerGrid(
-                        items: DoorStyle.allCases, selection: style, label: \.displayName, isUnfolded: isUnfolded
+                        items: DoorStyle.allCases, selection: settings.style, label: \.displayName,
+                        isUnfolded: isUnfolded
                     ) { door in
                         DoorLeafArt(
                             design: door.design,
-                            palette: DoorLook(style: door, hardware: door.defaultHardware, scene: scene).palette)
+                            palette: DoorLook(style: door, hardware: door.defaultHardware, scene: settings.scene)
+                                .palette)
                     } onSelect: { door in
-                        style = door
                         // Each door comes with its own hardware and scene; change them below if you like.
-                        hardware = door.defaultHardware
-                        scene = door.defaultScene
+                        settings.pick(door)
                     }
                 }
 
                 Section {
                     HStack(spacing: 14) {
                         ForEach(HardwareFinish.allCases) { finish in
-                            MetalSwatch(finish: finish, isSelected: finish == hardware) {
-                                hardware = finish
+                            MetalSwatch(finish: finish, isSelected: finish == settings.hardware) {
+                                settings.hardware = finish
                             }
                         }
                     }
@@ -50,23 +53,24 @@ struct SettingsView: View {
 
                 Section("Behind the door") {
                     PickerGrid(
-                        items: InsideScene.allCases, selection: scene, label: \.displayName, isUnfolded: isUnfolded
+                        items: InsideScene.allCases, selection: settings.scene, label: \.displayName,
+                        isUnfolded: isUnfolded
                     ) { scene in
                         InsideSceneArt(scene: scene)
-                    } onSelect: { newScene in
-                        scene = newScene
+                    } onSelect: { scene in
+                        settings.scene = scene
                     }
                 }
 
                 Section {
-                    Toggle("Cat lovers", systemImage: "cat", isOn: $catLovers)
+                    Toggle("Cat lovers", systemImage: "cat", isOn: $settings.catLovers)
                 } footer: {
                     Text("A cat joins every scene behind the door, each one up to something different.")
                 }
 
                 if hasHinge {
                     Section {
-                        Toggle("Swipe mode", systemImage: "hand.draw", isOn: $swipeMode)
+                        Toggle("Swipe mode", systemImage: "hand.draw", isOn: swipeMode)
                     } footer: {
                         Text("Swipe left to open the door and right to close it, folded or unfolded.")
                     }
@@ -197,7 +201,5 @@ private struct MetalSwatch: View {
 }
 
 #Preview {
-    SettingsView(
-        style: .constant(.cottage), hardware: .constant(.brass), scene: .constant(.beach), catLovers: .constant(true),
-        swipeMode: .constant(true))
+    SettingsView(settings: DoorSettings())
 }

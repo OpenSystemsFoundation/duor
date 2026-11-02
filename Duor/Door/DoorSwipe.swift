@@ -34,8 +34,6 @@ extension DoorScreen {
 /// swiping is off until the user turns it on. Without a hinge, swiping is the only way in, so it is
 /// always on. A choice the user has saved always wins on a hinge device.
 enum SwipeMode {
-    static let storageKey = "swipeMode"
-
     /// What the setting shows before the user has touched it.
     static func isOnByDefault(hasHinge: Bool) -> Bool { !hasHinge }
 
@@ -179,6 +177,15 @@ struct DoorFling: Equatable, Sendable {
     private(set) var velocity: Double
     let range: ClosedRange<Double>
     private(set) var isDone = false
+
+    /// The speed (degrees per second) that carries a flung door about `degrees` before it stops.
+    ///
+    /// Friction takes speed off in proportion to the distance travelled (`friction` per degree), so
+    /// that is `degrees × friction`, plus `restSpeed` because the door stops when it gets that slow.
+    /// Enough to close a door from `degrees` open: within `latchPull` of shut it swings itself shut.
+    static func speed(toTravel degrees: Double) -> Double {
+        max(degrees, 0) * friction + restSpeed
+    }
 
     init(degrees: Double, velocity: Double, range: ClosedRange<Double>) {
         self.range = range

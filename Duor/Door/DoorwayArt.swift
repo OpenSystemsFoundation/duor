@@ -99,3 +99,17 @@ enum DoorwayLight {
     DoorwayArt(look: DoorLook(style: .oak, hardware: .brass, scene: .beach), light: 1)
         .ignoresSafeArea()
 }
+
+extension View {
+    /// Describes the open door for VoiceOver, with an action to close it when swiping is on.
+    func openDoorAccessibility(degrees: Double, onClose: (() -> Void)?) -> some View {
+        accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Open door"))
+            .accessibilityValue(Text("Open \(Int(degrees)) degrees"))
+            .accessibilityActions {
+                if let onClose {
+                    Button("Close door", action: onClose)
+                }
+            }
+    }
+}

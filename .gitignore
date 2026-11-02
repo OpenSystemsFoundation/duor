@@ -18,3 +18,6 @@ build/
 
 # Claude Code (personal settings only; shared settings are committed)
 .claude/settings.local.json
+
+# App Store screenshots (regenerate with the ios-release skill)
+appstore/screenshots/

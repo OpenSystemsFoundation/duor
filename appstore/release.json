@@ -1,0 +1,137 @@
+{
+  "app_name": "Duor",
+  "bundle_id": "com.jeffkroon.Duor",
+  "sku": "duor",
+  "primary_locale": "en-US",
+  "project": "Duor.xcodeproj",
+  "scheme": "Duor",
+  "build_number": "git-count",
+  "copyright": "2026 Jeff Kroon",
+  "release_type": "MANUAL",
+  "uses_third_party_content": false,
+  "price": "free",
+  "availability": "all",
+  "categories": {
+    "primary": "ENTERTAINMENT"
+  },
+  "age_rating": {
+    "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+    "contests": "NONE",
+    "gamblingSimulated": "NONE",
+    "gunsOrOtherWeapons": "NONE",
+    "horrorOrFearThemes": "NONE",
+    "matureOrSuggestiveThemes": "NONE",
+    "medicalOrTreatmentInformation": "NONE",
+    "profanityOrCrudeHumor": "NONE",
+    "sexualContentGraphicAndNudity": "NONE",
+    "sexualContentOrNudity": "NONE",
+    "violenceCartoonOrFantasy": "NONE",
+    "violenceRealistic": "NONE",
+    "violenceRealisticProlongedGraphicOrSadistic": "NONE",
+    "gambling": false,
+    "lootBox": false,
+    "unrestrictedWebAccess": false,
+    "messagingAndChat": false,
+    "userGeneratedContent": false,
+    "advertising": false,
+    "parentalControls": false,
+    "ageAssurance": false,
+    "healthOrWellnessTopics": false
+  },
+  "review": {
+    "notes": "Duor is a door simulator made for the foldable iPhone Duo, and it works fully on every iPhone.\n\nOn any iPhone (and on the iPhone Duo's cover display): tap the closed door to knock, swipe left on the door to open it and swipe right to close it.\n\nOn iPhone Duo: the phone is the door. Folded, the cover display shows the outside of the door. Unfolding the phone opens the door with the hinge; folding it closes it, with a slam if you fold quickly.\n\nThe gear button opens Settings, where you pick the door, its metal hardware and the scene behind it, and can turn on Cat Lovers mode.\n\nAll sound is synthesized on the device. The app has no accounts, makes no network connections and collects no data.",
+    "demo_account_required": false
+  },
+  "localizations": {
+    "en-US": {
+      "name": "Duor",
+      "subtitle": "Advanced door simulator",
+      "promotional_text": "Two displays. A precision hinge sensor. Real-time physical sound synthesis. All of it, at last, put to work on the problem of opening a door.",
+      "description": "Duor is an advanced door simulator.\n\nYou own one of the most sophisticated phones ever made: a foldable iPhone with two displays, a precision hinge sensor and enough computing power to guide a small spacecraft. Duor finally puts all of it to work on the one thing humanity has needed all along: a door that opens and closes.\n\nFold your iPhone Duo shut and the cover display becomes the outside of a door. Tap to knock. Unfold it and the latch clicks and the door creaks open, tracking the hinge angle in real time. Ease it shut gently, or fold it fast and slam it. Nobody needs to know it was a phone.\n\nADVANCED DOOR TECHNOLOGY\n• Real-time physical sound synthesis. Every knock, creak and slam is computed live from the door's material, with modal resonators, stick-slip friction and a room reverb. No recordings. No two knocks alike.\n• Positional knock acoustics. The middle of the door sounds deeper, the edges sharper, and knocking by the handle rattles the latch. Yes, really.\n• Hinge-tracked door dynamics. The door has weight: it lags behind, swings on and bounces off the stop.\n• Six doors: oak, cottage, barn, castle, spaceship and metal.\n• Five hardware metals: iron, brass, chrome, copper and bronze, each with its own ring.\n• Six living scenes behind the door, from a sunny beach to deep space.\n• Cat lovers mode. A cat with its own little story moves into every scene.\n\nNO FOLDABLE? NO PROBLEM\nDuor works on every iPhone: just swipe the door open and shut. Same door, folded with your finger instead.\n\nNo accounts. No ads. No data collected. Just a door. A very advanced door.",
+      "keywords": "knock,creak,slam,foldable,fold,hinge,fidget,toy,sound,asmr,cat,castle,spaceship,funny,prank,relax",
+      "support_url": "https://opensf.foundation/products/duor/support/",
+      "marketing_url": "https://opensf.foundation/products/duor/",
+      "privacy_policy_url": "https://opensf.foundation/privacy/"
+    }
+  },
+  "screenshots": {
+    "device": "iPhone 18 Pro Max",
+    "configuration": "Debug",
+    "output": "appstore/screenshots",
+    "launch_args": [],
+    "scenes": [
+      {
+        "name": "01-beach-open",
+        "args": [
+          "-doorStyle",
+          "cottage",
+          "-hardware",
+          "brass",
+          "-insideScene",
+          "beach",
+          "-openDoor",
+          "YES"
+        ],
+        "wait": 4
+      },
+      {
+        "name": "02-oak-closed",
+        "args": [
+          "-doorStyle",
+          "oak",
+          "-hardware",
+          "iron",
+          "-insideScene",
+          "livingRoom"
+        ],
+        "wait": 3
+      },
+      {
+        "name": "03-castle-cats",
+        "args": [
+          "-doorStyle",
+          "castle",
+          "-hardware",
+          "bronze",
+          "-insideScene",
+          "greatHall",
+          "-catLovers",
+          "YES",
+          "-openDoor",
+          "YES"
+        ],
+        "wait": 4
+      },
+      {
+        "name": "04-spaceship-open",
+        "args": [
+          "-doorStyle",
+          "spaceship",
+          "-hardware",
+          "chrome",
+          "-insideScene",
+          "space",
+          "-openDoor",
+          "YES"
+        ],
+        "wait": 4
+      },
+      {
+        "name": "05-settings",
+        "args": [
+          "-doorStyle",
+          "barn",
+          "-hardware",
+          "iron",
+          "-insideScene",
+          "forest",
+          "-hasOpenedDoor",
+          "YES",
+          "-showSettings",
+          "YES"
+        ],
+        "wait": 3
+      }
+    ]
+  }
+}

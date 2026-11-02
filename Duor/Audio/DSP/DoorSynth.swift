@@ -17,6 +17,7 @@ nonisolated enum DoorSound: String, CaseIterable, Sendable {
 nonisolated final class DoorSynth: Sendable {
     fileprivate enum Command: Sendable {
         case play(DoorSound, volume: Float)
+        case knock(KnockSpot, volume: Float)
         case profile(SoundProfile)
     }
 
@@ -42,6 +43,11 @@ nonisolated final class DoorSynth: Sendable {
 
     func play(_ sound: DoorSound, volume: Float = 1) {
         post(.play(sound, volume: min(max(volume, 0), 1)))
+    }
+
+    /// A knock on a particular spot of the door. `play(.knock)` knocks in the middle.
+    func knock(at spot: KnockSpot, volume: Float = 1) {
+        post(.knock(spot, volume: min(max(volume, 0), 1)))
     }
 
     /// Signed hinge velocity in degrees per second. 0 lets the creak fade out.
@@ -139,9 +145,11 @@ private nonisolated struct SynthCore: Sendable {
             profile = newProfile
             creak.setProfile(newProfile.creak)
             reverb.mix = newProfile.room
+        case .knock(let spot, let volume):
+            knock(at: spot, volume)
         case .play(let sound, let volume):
             switch sound {
-            case .knock: knock(volume)
+            case .knock: knock(at: .center, volume)
             case .unlatch: unlatch(volume)
             case .latch: latch(volume)
             case .slam: slam(volume)
@@ -156,25 +164,45 @@ private nonisolated struct SynthCore: Sendable {
 
     /// A knuckle on solid wood: a short, heavily damped "tok" plus the knuckle's own sharp snap.
     /// Mostly dry, so it sounds close and tight rather than boomy.
-    private mutating func knock(_ volume: Float) {
-        let pitch = random.value(in: 0.97...1.03)
+    ///
+    /// Where it lands shapes it (see `KnockSpot`). Every knock also lands a little off target,
+    /// with a slightly different knuckle, so even the same spot never sounds the same twice.
+    private mutating func knock(at target: KnockSpot, _ volume: Float) {
+        let spot = target.nudged(by: &random)
+        var modes = spot.excite(profile.knock)
+        for index in modes.indices {
+            modes[index].gain *= random.value(in: 0.86...1.14)
+        }
+        let pitch = random.value(in: 0.97...1.03) * spot.pitchScale
         let touch = profile.knockTouch
         strike(
             ImpactSpec(
-                modes: profile.knock, contactTime: random.value(in: touch.contact),
+                modes: modes, contactTime: random.value(in: touch.contact) * spot.contactScale,
                 amplitude: 0.9 * volume, roughness: 0.2, detune: 0.03, pitchScale: pitch,
-                reverbSend: 0.3 + profile.room))
+                decayScale: spot.decayScale, reverbSend: 0.3 + profile.room))
         if touch.snapLevel > 0 {
             strike(
                 ImpactSpec(
-                    modes: profile.knock, contactTime: 0.0002, amplitude: touch.snapLevel * volume,
+                    modes: modes, contactTime: 0.0002,
+                    amplitude: touch.snapLevel * spot.snapScale * random.value(in: 0.7...1.3) * volume,
                     roughness: 0.9, pitchScale: touch.snapPitch * pitch, decayScale: 0.3, reverbSend: 0.15))
         }
         if touch.thump > 0 {
             strike(
                 ImpactSpec(
-                    modes: profile.frame, contactTime: 0.006, amplitude: touch.thump * volume, roughness: 0.1,
-                    decayScale: 0.7, reverbSend: 0.6))
+                    modes: profile.frame, contactTime: 0.006, amplitude: touch.thump * spot.thumpScale * volume,
+                    roughness: 0.1, decayScale: 0.7, reverbSend: 0.6))
+        }
+        // Near the handle the bolt ticks in its strike plate.
+        let rattle = spot.latchRattle
+        if rattle > 0.02 {
+            let heavy = profile.character.heavyBolt
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0.0002, amplitude: 0.09 * rattle * volume,
+                    roughness: 0.6, delay: random.value(in: 0.004...0.012),
+                    pitchScale: random.value(in: 0.95...1.05) * (heavy ? 0.5 : 1), decayScale: heavy ? 1.5 : 0.5,
+                    reverbSend: 0.3))
         }
         // No glass on knocks: the panes only rattle when the door moves.
         clatterBoards(profile.character.looseBoards * 0.4 * volume, after: 0.006, count: 2)

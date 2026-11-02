@@ -64,7 +64,7 @@ struct RootView: View {
                         // One flat screen: a swipe slides the door off the doorframe and back.
                         DoorSlideView(
                             look: look, doorDegrees: controller.isSwiped ? controller.angle : 0,
-                            feedback: controller.feedback, catLovers: catLovers, onKnock: controller.knock,
+                            feedback: controller.feedback, catLovers: catLovers, onKnock: controller.knock(at:),
                             onOpen: canSwipe ? { controller.swing(open: true) } : nil,
                             onClose: canSwipe ? { controller.swing(open: false) } : nil)
                     }
@@ -126,11 +126,13 @@ struct RootView: View {
             deviceOrientation.start()
         }
         #if DEBUG
-            // UI testing and screenshots: launch with `-showSettings YES`.
+            // UI testing and screenshots: launch with `-showSettings YES` or `-openDoor YES`.
             .task {
-                guard UserDefaults.standard.bool(forKey: "showSettings") else { return }
+                let defaults = UserDefaults.standard
+                guard defaults.bool(forKey: "showSettings") || defaults.bool(forKey: "openDoor") else { return }
                 try? await Task.sleep(for: .milliseconds(600))
-                isShowingSettings = true
+                if defaults.bool(forKey: "openDoor") { controller.swing(open: true) }
+                if defaults.bool(forKey: "showSettings") { isShowingSettings = true }
             }
         #endif
     }

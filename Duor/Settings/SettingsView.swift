@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Pick the door, its hardware, what's behind it, whether a cat lives there, and whether the door
-/// can be swiped.
+/// can be swiped. At the bottom: who made it.
 struct SettingsView: View {
     @Binding var style: DoorStyle
     @Binding var hardware: HardwareFinish
@@ -71,6 +71,8 @@ struct SettingsView: View {
                         Text("Swipe left to open the door and right to close it, folded or unfolded.")
                     }
                 }
+
+                MakerSection()
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -81,6 +83,34 @@ struct SettingsView: View {
                 // On the iPhone Duo: in the vertical control lane, like the settings button.
                 .axisBehavior(.verticalPreferred)
             }
+        }
+    }
+}
+
+/// Who made the door, for anyone curious enough to scroll all the way down: links to the maker's
+/// website and a way to send a message.
+private struct MakerSection: View {
+    private static let website = URL(string: "https://opensf.foundation/")!
+    private static let email = URL(string: "mailto:info@opensf.foundation?subject=Duor")!
+
+    private var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
+    }
+
+    var body: some View {
+        Section {
+            Link(destination: Self.website) {
+                Label("Visit the workshop", systemImage: "hammer")
+            }
+            Link(destination: Self.email) {
+                Label("Knock on the maker's door", systemImage: "envelope")
+            }
+        } header: {
+            Text("Who made this app?")
+        } footer: {
+            Text(
+                "Duor \(version) is made with love by Jeff. Like Duor? Come and say hi!"
+            )
         }
     }
 }

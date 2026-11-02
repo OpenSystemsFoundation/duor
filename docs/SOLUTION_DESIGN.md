@@ -142,7 +142,7 @@ Two rules follow from that:
 | Phone | Door | Screen | Sound | Haptic |
 |---|---|---|---|---|
 | Folded (`.closed`) | Closed | Cover: door outside face | — | — |
-| Tap on cover | Knocked | Soft shadow blooms where the knuckle hit; door jiggles 1.5 pt | Knock (synthesized, every one different) | Heavy impact |
+| Tap on cover | Knocked | Soft shadow blooms where the knuckle hit; door jiggles 1.5 pt | Knock (synthesized, every one different, shaped by where it lands) | Heavy impact |
 | `.closed → .partiallyOpen` | Unlatching | Whatever screen the system keeps on (often still the cover: then the outside face stays) | Latch release click | Light impact |
 | Angle changing | Swinging | Inner display: leaf's inside face (still) + doorway; the room lights up from ~10° to ~120°, hinge-side shadow on the leaf fades | Creak: volume and pitch ∝ speed; fades when updates stop | — |
 | `→ .fullyOpen` | Hits stop | Leaf flat against wall | Soft thud, scaled by impact speed | Soft impact |
@@ -241,7 +241,7 @@ The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`Sw
 | `Door/DoorSlideView.swift` | Single screen: the doorframe fills the screen; the outside face slides off it when swiped open and back on top when swiped shut. |
 | `Door/DoorInsideView.swift` | Inner display: splits at the crease, leaf inside face + doorway, hinge straps across the crease, light driven by angle. |
 | `Audio/DoorAudioEngine.swift` | Audio session, `AVAudioEngine` with one `AVAudioSourceNode` that calls `DoorSynth.render`, restart on route change / interruption. Behind the `DoorSoundPlaying` protocol for tests. |
-| `Audio/DSP/*` | The synthesizer: `DoorSynth` (thread hand-off + sound recipes), `ImpactVoice`, `CreakVoice`, `ModalBank`, `RoomReverb`, `NoiseSource`, `SoundProfile` (per-style materials). Pure Swift, no AVFoundation, so it is unit tested and renders offline. |
+| `Audio/DSP/*` | The synthesizer: `DoorSynth` (thread hand-off + sound recipes), `ImpactVoice`, `KnockSpot` (how a knock's position shapes it), `CreakVoice`, `ModalBank`, `RoomReverb`, `NoiseSource`, `SoundProfile` (per-style materials). Pure Swift, no AVFoundation, so it is unit tested and renders offline. |
 | `Settings/SettingsView.swift` | Style picker. |
 
 ### 5.3 Event logic (DoorMotionInterpreter)
@@ -301,7 +301,7 @@ Each one-shot is a few strikes on the style's materials (`SoundProfile`: `panel`
 
 | Sound | Recipe |
 |---|---|
-| Knock | Dedicated `knock` modes: the same oak, heavily damped by the hand (7–28 ms decays, 160 Hz–1.35 kHz). 0.8–1.2 ms contact (knuckle), ±3 % pitch, plus a 0.2 ms knuckle snap ~1.7 octaves up. Mostly dry (reverb send 0.3) so it sounds close and tight, not hollow. Wood rings out in ~100 ms. |
+| Knock | Dedicated `knock` modes: the same oak, heavily damped by the hand (7–28 ms decays, 160 Hz–1.35 kHz). 0.8–1.2 ms contact (knuckle), ±3 % pitch, plus a 0.2 ms knuckle snap ~1.7 octaves up. Mostly dry (reverb send 0.3) so it sounds close and tight, not hollow. Wood rings out in ~100 ms. **Where it lands** (`KnockSpot`): the profile's knock is the middle of the door, slightly deeper there; toward the edges the leaf is stiffer, so up to 8 % higher, shorter (0.7× decay, 0.7× contact), more snap and frame thud, with modes tilted toward the high ones. Each mode is also weighted by how much its plate mode (door ≈ 1:2) moves at that spot, so equally central spots still differ. Near the handle the latch bolt ticks faintly. **Same spot twice**: each knock lands ±3 % off target, with ±14 % per-mode gain and ±30 % snap jitter. |
 | Unlatch | Latch click, second lower click 18–30 ms later (bolt clears the strike plate), faint panel tick. The latch material is steel mounted in wood: 4–14 ms decays, so it clacks instead of ringing. |
 | Latch (gentle/firm) | Frame thump (∝ volume²) + panel + bolt riding the strike plate, then the bolt snapping in 28–45 ms later. |
 | Slam | Heavy frame hit (6 ms, longer decay) + panel + latch at 8 ms + four hinge rattles at 20–45 ms intervals, each 0.6× quieter. |

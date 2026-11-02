@@ -114,9 +114,10 @@ final class DoorController {
         fling(velocity: open ? 240 : -120)
     }
 
-    func knock() {
+    /// A knock on `spot` of the door's outside face. Where it lands changes how it sounds.
+    func knock(at spot: KnockSpot = .center) {
         guard isClosed else { return }
-        sounds.play(.knock, volume: Float.random(in: 0.85...1))
+        sounds.knock(at: spot, volume: Float.random(in: 0.85...1))
         emit(.knock)
     }
 

@@ -6,11 +6,13 @@ struct DoorOutsideView: View {
     let look: DoorLook
     /// Latest door feedback, for the knock and close shakes.
     let feedback: DoorFeedback?
-    let onKnock: () -> Void
+    /// Called with where on the door the knock landed.
+    let onKnock: (KnockSpot) -> Void
     /// Opens the door without a swipe (accessibility). Nil when swiping is off.
     var onOpen: (() -> Void)?
 
     @State private var dents: [KnockDent] = []
+    @State private var size: CGSize = .zero
 
     var body: some View {
         DoorLeafArt(look: look, hingeSide: .leading, face: .outside)
@@ -40,6 +42,11 @@ struct DoorOutsideView: View {
                 CubicKeyframe(0, duration: 0.1)
             }
             .ignoresSafeArea()
+            .onGeometryChange(for: CGSize.self) {
+                $0.size
+            } action: {
+                size = $0
+            }
             .contentShape(.rect)
             .gesture(
                 SpatialTapGesture().onEnded { tap in
@@ -52,7 +59,7 @@ struct DoorOutsideView: View {
             .accessibilityLabel(Text("Closed door"))
             .accessibilityHint(Text("Double-tap to knock."))
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction { onKnock() }
+            .accessibilityAction { onKnock(.center) }
             .accessibilityActions {
                 if let onOpen {
                     Button("Open door", action: onOpen)
@@ -63,7 +70,7 @@ struct DoorOutsideView: View {
     private func knock(at location: CGPoint) {
         let dent = KnockDent(location: location)
         dents.append(dent)
-        onKnock()
+        onKnock(KnockSpot(tap: location, in: size))
         Task {
             try? await Task.sleep(for: .milliseconds(450))
             dents.removeAll { $0.id == dent.id }
@@ -106,6 +113,18 @@ private struct KnockDentView: View {
     }
 }
 
+extension KnockSpot {
+    /// Where a tap at `location` lands on a door leaf of `size`. The door is never mirrored, so x
+    /// runs from the hinge (leading) edge to the latch edge. The middle until the size is known.
+    init(tap location: CGPoint, in size: CGSize) {
+        guard size.width > 0, size.height > 0 else {
+            self = .center
+            return
+        }
+        self.init(x: Float(location.x / size.width), y: Float(location.y / size.height))
+    }
+}
+
 #Preview {
-    DoorOutsideView(look: DoorLook(style: .barn, hardware: .iron, scene: .forest), feedback: nil, onKnock: {})
+    DoorOutsideView(look: DoorLook(style: .barn, hardware: .iron, scene: .forest), feedback: nil, onKnock: { _ in })
 }

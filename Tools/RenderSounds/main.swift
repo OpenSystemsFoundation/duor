@@ -22,6 +22,10 @@ func play(_ sound: DoorSound, at time: Float, volume: Float = 1) -> Cue {
     Cue(time: time) { $0.play(sound, volume: volume) }
 }
 
+func knock(_ x: Float, _ y: Float, at time: Float, volume: Float = 1) -> Cue {
+    Cue(time: time) { $0.knock(at: KnockSpot(x: x, y: y), volume: volume) }
+}
+
 /// Feeds hinge velocity at 60 Hz, like `onHingeChange` would, then stops.
 func swing(from start: Float, duration: Float, velocity: @escaping (Float) -> Float) -> [Cue] {
     let steps = Int(duration * 60)
@@ -135,6 +139,21 @@ try render(
     "knock", seconds: 1.4,
     cues: [play(.knock, at: 0.05, volume: 0.9), play(.knock, at: 0.33), play(.knock, at: 0.58, volume: 0.85)])
 try render("knock-single", seconds: 0.6, cues: [play(.knock, at: 0.05)])
+// Where the knock lands: middle of the leaf, near the hinge edge, by the handle, near the top.
+try render("knock-middle", seconds: 0.6, cues: [knock(0.5, 0.5, at: 0.05)])
+try render("knock-edge", seconds: 0.6, cues: [knock(0.06, 0.5, at: 0.05)])
+try render("knock-handle", seconds: 0.6, cues: [knock(0.94, 0.5, at: 0.05)])
+try render("knock-top", seconds: 0.6, cues: [knock(0.5, 0.08, at: 0.05)])
+// The same spot three times, then walking across the door.
+try render(
+    "knock-repeat", seconds: 1.4,
+    cues: [knock(0.5, 0.4, at: 0.05, volume: 0.9), knock(0.5, 0.4, at: 0.33), knock(0.5, 0.4, at: 0.58, volume: 0.85)])
+try render(
+    "knock-across", seconds: 1.6,
+    cues: [
+        knock(0.08, 0.45, at: 0.05), knock(0.3, 0.45, at: 0.33), knock(0.55, 0.45, at: 0.61),
+        knock(0.92, 0.5, at: 0.89),
+    ])
 try render("unlatch", seconds: 0.8, cues: [play(.unlatch, at: 0.05)])
 try render("airlock-unlatch", seconds: 1, cues: [play(.unlatch, at: 0.05)], profile: .spaceship)
 try render(

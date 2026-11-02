@@ -14,7 +14,7 @@ struct DoorSlideView: View {
     let feedback: DoorFeedback?
     /// Add a cat to the scene beyond the door.
     var catLovers = false
-    let onKnock: () -> Void
+    let onKnock: (KnockSpot) -> Void
     /// Opens the door without a swipe (accessibility). Nil when swiping is off.
     var onOpen: (() -> Void)?
     /// Closes the door without a swipe (accessibility). Nil when swiping is off.
@@ -62,5 +62,5 @@ struct DoorSlideView: View {
 #Preview("Sliding open") {
     DoorSlideView(
         look: DoorLook(style: .cottage, hardware: .brass, scene: .beach), doorDegrees: 70, feedback: nil,
-        onKnock: {})
+        onKnock: { _ in })
 }

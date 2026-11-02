@@ -56,11 +56,79 @@
     }
   },
   "screenshots": {
-    "device": "iPhone 18 Pro Max",
     "configuration": "Debug",
     "output": "appstore/screenshots",
     "launch_args": [],
     "scenes": [
+      {
+        "name": "00-duo-1-folded",
+        "devices": [
+          "iPhone Duo"
+        ],
+        "args": [
+          "-doorStyle",
+          "oak",
+          "-hardware",
+          "brass",
+          "-insideScene",
+          "livingRoom",
+          "-hasOpenedDoor",
+          "YES"
+        ],
+        "hinge_before": [
+          "close",
+          "wait 2"
+        ],
+        "wait": 3
+      },
+      {
+        "name": "00-duo-2-half-open",
+        "devices": [
+          "iPhone Duo"
+        ],
+        "args": [
+          "-doorStyle",
+          "oak",
+          "-hardware",
+          "brass",
+          "-insideScene",
+          "livingRoom",
+          "-hasOpenedDoor",
+          "YES"
+        ],
+        "hinge_before": [
+          "close",
+          "wait 2"
+        ],
+        "wait": 3,
+        "hinge": [
+          "sweep 0 100 1.5"
+        ]
+      },
+      {
+        "name": "00-duo-3-open",
+        "devices": [
+          "iPhone Duo"
+        ],
+        "args": [
+          "-doorStyle",
+          "oak",
+          "-hardware",
+          "brass",
+          "-insideScene",
+          "livingRoom",
+          "-hasOpenedDoor",
+          "YES"
+        ],
+        "hinge_before": [
+          "close",
+          "wait 2"
+        ],
+        "wait": 3,
+        "hinge": [
+          "sweep 0 180 2"
+        ]
+      },
       {
         "name": "01-beach-open",
         "args": [
@@ -73,7 +141,11 @@
           "-openDoor",
           "YES"
         ],
-        "wait": 4
+        "wait": 4,
+        "devices": [
+          "iPhone 18 Pro Max",
+          "iPad Air 13-inch (M4)"
+        ]
       },
       {
         "name": "02-oak-closed",
@@ -85,7 +157,11 @@
           "-insideScene",
           "livingRoom"
         ],
-        "wait": 3
+        "wait": 3,
+        "devices": [
+          "iPhone 18 Pro Max",
+          "iPad Air 13-inch (M4)"
+        ]
       },
       {
         "name": "03-castle-cats",
@@ -101,7 +177,11 @@
           "-openDoor",
           "YES"
         ],
-        "wait": 4
+        "wait": 4,
+        "devices": [
+          "iPhone 18 Pro Max",
+          "iPad Air 13-inch (M4)"
+        ]
       },
       {
         "name": "04-spaceship-open",
@@ -115,7 +195,11 @@
           "-openDoor",
           "YES"
         ],
-        "wait": 4
+        "wait": 4,
+        "devices": [
+          "iPhone 18 Pro Max",
+          "iPad Air 13-inch (M4)"
+        ]
       },
       {
         "name": "05-settings",
@@ -131,7 +215,97 @@
           "-showSettings",
           "YES"
         ],
-        "wait": 3
+        "wait": 3,
+        "devices": [
+          "iPhone 18 Pro Max",
+          "iPad Air 13-inch (M4)"
+        ]
+      }
+    ],
+    "devices": [
+      "iPhone 18 Pro Max",
+      "iPhone Duo",
+      "iPad Air 13-inch (M4)"
+    ],
+    "frame": {
+      "orientation": "landscape",
+      "input": "appstore/screenshots-raw",
+      "captions": {
+        "en-US": {
+          "00-duo-1-folded": [
+            "Folded, it's a door.",
+            "On iPhone Duo, the cover display is the outside of the door. Tap to knock."
+          ],
+          "00-duo-2-half-open": [
+            "Unfold to open.",
+            "The door follows the hinge, degree by degree, with a creak to match."
+          ],
+          "00-duo-3-open": [
+            "Fold fast to slam.",
+            "Ease it shut gently, or fold it quickly and let it slam."
+          ],
+          "01-beach-open": [
+            "Six doors, six worlds.",
+            "A cottage door onto a sunny beach. Or a forest, a great hall, even deep space."
+          ],
+          "02-oak-closed": [
+            "Tap to knock.",
+            "The middle sounds deeper, the edges sharper, and the handle rattles the latch."
+          ],
+          "03-castle-cats": [
+            "Built like a castle.",
+            "Iron studs, a heavy ring and a great hall behind it. It sounds as heavy as it looks."
+          ],
+          "04-spaceship-open": [
+            "Or an airlock.",
+            "Every door sounds like itself, synthesized live on your iPhone. No recordings."
+          ],
+          "04-spaceship-open@ipad": [
+            "Or an airlock.",
+            "Every door sounds like itself, synthesized live on your iPad. No recordings."
+          ],
+          "05-settings": [
+            "Make it your door.",
+            "Pick the door, the metal for its hinges and handle, and the scene behind it."
+          ]
+        }
+      }
+    }
+  },
+  "previews": {
+    "configuration": "Debug",
+    "output": "appstore/previews",
+    "items": [
+      {
+        "name": "duo-fold",
+        "device": "iPhone Duo",
+        "orientation": "landscape",
+        "args": [
+          "-doorStyle",
+          "oak",
+          "-hardware",
+          "brass",
+          "-insideScene",
+          "livingRoom",
+          "-hasOpenedDoor",
+          "YES"
+        ],
+        "setup": [
+          "close",
+          "wait 2"
+        ],
+        "wait": 3,
+        "steps": [
+          "wait 4",
+          "sweep 0 180 3",
+          "wait 7",
+          "sweep 180 0 0.35",
+          "wait 5"
+        ],
+        "trim": [
+          2.5
+        ],
+        "poster": 8
       }
     ]
   }

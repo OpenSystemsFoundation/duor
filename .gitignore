@@ -21,3 +21,5 @@ build/
 
 # App Store screenshots (regenerate with the ios-release skill)
 appstore/screenshots/
+appstore/screenshots-raw/
+appstore/previews/

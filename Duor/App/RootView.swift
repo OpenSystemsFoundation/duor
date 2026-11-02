@@ -63,7 +63,8 @@ struct RootView: View {
             let screen = doorScreen(proxy)
             let isInnerDisplay = screen == .inner
             let turns = DeviceFixedTurns.quarterTurns(
-                screen: proxy.size, isInnerDisplay: isInnerDisplay, landscape: deviceOrientation.lastLandscape)
+                screen: proxy.size, isInnerDisplay: isInnerDisplay, hasHinge: controller.hasHardwareHinge,
+                landscape: deviceOrientation.lastLandscape)
             ZStack {
                 DeviceFixed(quarterTurns: turns) { _, crease in
                     if isInnerDisplay {

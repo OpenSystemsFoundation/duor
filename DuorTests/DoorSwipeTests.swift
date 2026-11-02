@@ -1,10 +1,28 @@
 import CoreGraphics
 import Testing
+import UIKit
 
 @testable import Duor
 
 @Suite("DoorSwipe")
 struct DoorSwipeTests {
+    // MARK: Device-fixed rotation
+
+    @Test func doorStaysUprightWithoutAHinge() {
+        // An iPad in landscape: the interface turned, and the door turns with it.
+        let turns = DeviceFixedTurns.quarterTurns(
+            screen: CGSize(width: 1366, height: 1024), isInnerDisplay: false, hasHinge: false, landscape: .landscapeLeft
+        )
+        #expect(turns == 0)
+    }
+
+    @Test func coverDisplayDoorStaysFixedToTheFoldable() {
+        // The cover display is tall; if the interface turned wide, the door turns back.
+        let turns = DeviceFixedTurns.quarterTurns(
+            screen: CGSize(width: 900, height: 600), isInnerDisplay: false, hasHinge: true, landscape: .landscapeRight)
+        #expect(turns == 1)
+    }
+
     // MARK: Drive
 
     @Test func hingeHasTheDoorUntilASwipe() {

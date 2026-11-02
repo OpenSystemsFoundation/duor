@@ -45,9 +45,14 @@ enum DeviceFixedTurns {
     /// Each screen has a known shape when the device is upright: the inner display is wide (the
     /// book posture), the cover display is tall. If the screen's current shape differs, the system
     /// rotated the interface, and the physical device orientation says which way.
+    /// Without a hinge (a regular iPhone or an iPad) the door isn't part of the hardware: it stays
+    /// upright and follows the interface, which on iPad rotates freely.
     /// - Parameter landscape: The last landscape orientation the device was in. The interface can only
     ///   have turned to one of these, and if it's locked there, the device may since have turned back.
-    static func quarterTurns(screen: CGSize, isInnerDisplay: Bool, landscape: UIDeviceOrientation) -> Int {
+    static func quarterTurns(
+        screen: CGSize, isInnerDisplay: Bool, hasHinge: Bool, landscape: UIDeviceOrientation
+    ) -> Int {
+        guard hasHinge else { return 0 }
         let isWide = screen.width > screen.height
         guard isWide != isInnerDisplay else { return 0 }
         // The interface turned to stay upright for the user; turn the door back the other way.

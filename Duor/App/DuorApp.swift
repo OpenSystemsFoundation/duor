@@ -49,7 +49,8 @@ final class DoorHostingController: UIHostingController<RootView> {
         fatalError("init(coder:) is not supported")
     }
 
-    override var prefersInterfaceOrientationLocked: Bool { true }
+    /// Locked on iPhone, where the door is part of the phone. An iPad turns freely: the door follows.
+    override var prefersInterfaceOrientationLocked: Bool { traitCollection.userInterfaceIdiom == .phone }
 
     /// Split View shares the screen: tell the door it's in a window.
     override func viewDidLayoutSubviews() {

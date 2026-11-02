@@ -10,6 +10,29 @@ protocol DoorSoundPlaying: AnyObject {
     func setCreak(velocity: Double)
 }
 
+/// When to voice the sound for the phone's own speakers (`SpeakerVoicing`). Automatic unless the
+/// `-speakerVoicing on|off` launch argument says otherwise (for comparing the two on a device).
+enum SpeakerVoicingMode: String {
+    /// Only on the built-in speaker, not headphones, Bluetooth or AirPlay.
+    case auto
+    case on
+    case off
+
+    static let storageKey = "speakerVoicing"
+
+    static var current: SpeakerVoicingMode {
+        UserDefaults.standard.string(forKey: storageKey).flatMap(SpeakerVoicingMode.init) ?? .auto
+    }
+
+    func isOn(builtInSpeaker: Bool) -> Bool {
+        switch self {
+        case .auto: builtInSpeaker
+        case .on: true
+        case .off: false
+        }
+    }
+}
+
 /// Runs `DoorSynth` through `AVAudioEngine` with an `AVAudioSourceNode`.
 final class DoorAudioEngine: DoorSoundPlaying {
     private let engine = AVAudioEngine()
@@ -37,7 +60,7 @@ final class DoorAudioEngine: DoorSoundPlaying {
 
         let hardwareRate = engine.outputNode.outputFormat(forBus: 0).sampleRate
         let sampleRate = hardwareRate > 0 ? hardwareRate : 48_000
-        synth = DoorSynth(sampleRate: Float(sampleRate))
+        synth = DoorSynth(sampleRate: Float(sampleRate), speakerVoicing: Self.wantsSpeakerVoicing())
         fader = OutputFader(sampleRate: Float(sampleRate))
 
         let source = Self.makeSourceNode(for: synth, fader: fader)
@@ -75,6 +98,19 @@ final class DoorAudioEngine: DoorSoundPlaying {
 
     func setCreak(velocity: Double) {
         synth.setCreak(velocity: Float(velocity))
+    }
+
+    /// Whether the sound goes to the built-in speaker (and the mode allows voicing for it).
+    private static func wantsSpeakerVoicing() -> Bool {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        return SpeakerVoicingMode.current.isOn(builtInSpeaker: outputs.contains { $0.portType == .builtInSpeaker })
+    }
+
+    /// Follows the route: voiced on the phone's speakers, flat on headphones, Bluetooth or AirPlay.
+    private func updateSpeakerVoicing() {
+        let isOn = Self.wantsSpeakerVoicing()
+        synth.setSpeakerVoicing(isOn)
+        logger.info("Speaker voicing \(isOn ? "on" : "off")")
     }
 
     /// The render block runs on the real-time audio thread, so it is built outside the main actor.
@@ -132,16 +168,19 @@ final class DoorAudioEngine: DoorSoundPlaying {
         engine.stop()
     }
 
-    /// The engine stops on route changes (headphones in/out) and interruptions (calls, Siri).
+    /// The engine stops on route changes (headphones in/out) and interruptions (calls, Siri). A new
+    /// route may also need different voicing.
     private func observeRestarts() {
         let names: [Notification.Name] = [
             .AVAudioEngineConfigurationChange,
             AVAudioSession.interruptionNotification,
             AVAudioSession.mediaServicesWereResetNotification,
+            AVAudioSession.routeChangeNotification,
         ]
         observers = names.map { name in
             Task { [weak self] in
                 for await _ in NotificationCenter.default.notifications(named: name) {
+                    self?.updateSpeakerVoicing()
                     self?.startIfNeeded()
                 }
             }
@@ -165,6 +204,8 @@ final class DoorAudioEngine: DoorSoundPlaying {
                 guard !isInBackground, !engine.isRunning else { return }
                 // Sound left mid-ring by a fade-out ramps back up instead of starting with a click.
                 fader.reset()
+                // The route is only certain once the session is active.
+                updateSpeakerVoicing()
                 try engine.start()
             } catch {
                 logger.error("Audio engine start failed: \(error.localizedDescription)")

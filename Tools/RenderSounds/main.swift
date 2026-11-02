@@ -37,8 +37,9 @@ func swing(from start: Float, duration: Float, velocity: @escaping (Float) -> Fl
     return cues
 }
 
-func render(_ name: String, seconds: Float, cues: [Cue], profile: SoundProfile = .oak) throws {
-    let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 42)
+/// `speaker`: voiced for the phone's own speakers, as the app plays on them (see `SpeakerVoicing`).
+func render(_ name: String, seconds: Float, cues: [Cue], profile: SoundProfile = .oak, speaker: Bool = false) throws {
+    let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 42, speakerVoicing: speaker)
     let frameCount = Int(seconds * sampleRate)
     var samples = [Float](repeating: 0, count: frameCount)
     var pending = cues.sorted { $0.time < $1.time }[...]
@@ -66,14 +67,34 @@ func render(_ name: String, seconds: Float, cues: [Cue], profile: SoundProfile =
     let lastLoud = samples.lastIndex { abs($0) > peak * 0.01 } ?? peakIndex
     let ringTime = Float(lastLoud - peakIndex) / sampleRate
     let (brightness, speakerLevel) = spectrum(of: samples, from: max(peakIndex - 64, 0))
+    let onPhone = phoneSpeakerRMS(samples)
     print(
-        name.padding(toLength: 14, withPad: " ", startingAt: 0),
+        name.padding(toLength: 20, withPad: " ", startingAt: 0),
         String(
-            format: "peak %6.1f dBFS   rms %6.1f dBFS   ring %4.0f ms   centroid %5.0f Hz   above 250 Hz %6.1f dB",
-            decibels(peak), decibels(rms), ringTime * 1000, brightness, decibels(speakerLevel)),
+            format:
+                "peak %6.1f dBFS   rms %6.1f dBFS   ring %4.0f ms   centroid %5.0f Hz   above 250 Hz %6.1f dB   on phone %6.1f dB",
+            decibels(peak), decibels(rms), ringTime * 1000, brightness, decibels(speakerLevel), decibels(onPhone)),
         finite ? "" : "  NON-FINITE SAMPLES")
 
     try writeWAV(samples, to: outputDirectory.appendingPathComponent("\(name).wav"))
+}
+
+/// Roughly what a phone's own speaker gets across: the RMS of the sound through a 200 Hz – 6 kHz band
+/// (4th-order high-pass, 2nd-order low-pass), over the loudest 300 ms.
+func phoneSpeakerRMS(_ samples: [Float]) -> Float {
+    var highPass1 = Biquad(.highPass, frequency: 200, q: 0.541, sampleRate: sampleRate)
+    var highPass2 = Biquad(.highPass, frequency: 200, q: 1.307, sampleRate: sampleRate)
+    var lowPass = Biquad(.lowPass, frequency: 6_000, q: 0.707, sampleRate: sampleRate)
+    let heard = samples.map { lowPass.process(highPass2.process(highPass1.process($0))) }
+    let window = min(Int(0.3 * sampleRate), heard.count)
+    var best: Float = 0
+    var sum: Float = 0
+    for index in heard.indices {
+        sum += heard[index] * heard[index]
+        if index >= window { sum -= heard[index - window] * heard[index - window] }
+        best = max(best, sum)
+    }
+    return sqrt(best / Float(max(window, 1)))
 }
 
 /// Spectral centroid (how bright it sounds) and RMS above 250 Hz (what a phone speaker can play)
@@ -203,5 +224,22 @@ for (name, profile) in doors {
             + [play(.slam, at: 3.85)],
         profile: profile)
 }
+
+// As played on the phone's own speakers: compare with the flat files above.
+for (name, profile) in doors.prefix(6) {
+    try render("speaker-knock-\(name)", seconds: 1.2, cues: [play(.knock, at: 0.05)], profile: profile, speaker: true)
+}
+try render("speaker-slam", seconds: 1.4, cues: [play(.slam, at: 0.05)], speaker: true)
+try render(
+    "speaker-sequence", seconds: 5.5,
+    cues: [
+        play(.knock, at: 0.1, volume: 0.9), play(.knock, at: 0.36),
+        play(.unlatch, at: 1.3),
+    ]
+        + swing(from: 1.35, duration: 1.2) { 140 * sin(.pi * $0 / 1.2) }
+        + [play(.openStop, at: 2.6, volume: 0.6)]
+        + swing(from: 3.4, duration: 0.45) { -260 * sin(.pi * $0 / 0.45) }
+        + [play(.slam, at: 3.85)],
+    speaker: true)
 
 print("Wrote WAV files to \(outputDirectory.path)")

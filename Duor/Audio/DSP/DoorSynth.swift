@@ -24,6 +24,7 @@ nonisolated final class DoorSynth: Sendable {
     private struct Inbox: Sendable {
         var commands: [Command]
         var creakVelocity: Float = 0
+        var speakerVoicing: Bool
     }
 
     /// Commands past this many per buffer are dropped rather than growing the queue.
@@ -32,11 +33,16 @@ nonisolated final class DoorSynth: Sendable {
     private let inbox: Mutex<Inbox>
     private let core: Mutex<SynthCore>
 
-    init(sampleRate: Float, profile: SoundProfile = .oak, seed: UInt32 = .random(in: 1...UInt32.max)) {
+    /// - Parameter speakerVoicing: Start voiced for the phone's own speakers (see `SpeakerVoicing`).
+    init(
+        sampleRate: Float, profile: SoundProfile = .oak, seed: UInt32 = .random(in: 1...UInt32.max),
+        speakerVoicing: Bool = false
+    ) {
         var commands: [Command] = []
         commands.reserveCapacity(Self.inboxCapacity)
-        inbox = Mutex(Inbox(commands: commands))
-        core = Mutex(SynthCore(sampleRate: sampleRate, profile: profile, seed: seed))
+        inbox = Mutex(Inbox(commands: commands, speakerVoicing: speakerVoicing))
+        core = Mutex(
+            SynthCore(sampleRate: sampleRate, profile: profile, seed: seed, speakerVoicing: speakerVoicing))
     }
 
     // MARK: Main thread
@@ -59,6 +65,12 @@ nonisolated final class DoorSynth: Sendable {
         post(.profile(profile))
     }
 
+    /// Voice the output for the phone's own small speakers, or play it flat (headphones, Bluetooth,
+    /// AirPlay). Glides, so it can change while a sound rings.
+    func setSpeakerVoicing(_ isOn: Bool) {
+        inbox.withLock { $0.speakerVoicing = isOn }
+    }
+
     private func post(_ command: Command) {
         inbox.withLock { inbox in
             guard inbox.commands.count < Self.inboxCapacity else { return }
@@ -75,6 +87,7 @@ nonisolated final class DoorSynth: Sendable {
                 // Both arrays keep their reserved capacity, so the swap never allocates.
                 swap(&core.pending, &inbox.commands)
                 core.creakVelocity = inbox.creakVelocity
+                core.voicing.isOn = inbox.speakerVoicing
             }
             core.render(into: output)
         }
@@ -88,6 +101,7 @@ private nonisolated struct SynthCore: Sendable {
     var voices = InlineArray<24, ImpactVoice>(repeating: ImpactVoice())
     var creak: CreakVoice
     var reverb: RoomReverb
+    var voicing: SpeakerVoicing
     var random: NoiseSource
     var pending: [DoorSynth.Command]
     var creakVelocity: Float = 0
@@ -96,12 +110,13 @@ private nonisolated struct SynthCore: Sendable {
     var send: [Float]
     static let chunkSize = 512
 
-    init(sampleRate: Float, profile: SoundProfile, seed: UInt32) {
+    init(sampleRate: Float, profile: SoundProfile, seed: UInt32, speakerVoicing: Bool) {
         self.sampleRate = sampleRate
         self.profile = profile
         random = NoiseSource(seed: seed)
         creak = CreakVoice(profile: profile.creak, sampleRate: sampleRate, seed: seed &* 2_654_435_761)
         reverb = RoomReverb(sampleRate: sampleRate, mix: profile.room)
+        voicing = SpeakerVoicing(sampleRate: sampleRate, isOn: speakerVoicing)
         pending = []
         pending.reserveCapacity(DoorSynth.inboxCapacity)
         send = [Float](repeating: 0, count: Self.chunkSize)
@@ -132,9 +147,11 @@ private nonisolated struct SynthCore: Sendable {
             }
             creak.render(into: output, send: send)
 
-            // Room, then a soft clipper so stacked hits saturate gently instead of clipping.
+            // Room, voicing for the phone's speakers (when on), then a soft clipper so stacked hits
+            // saturate gently instead of clipping.
             for frame in output.indices {
-                output[frame] = tanhf((output[frame] + reverb.process(send[frame])) * masterGain)
+                let mixed = output[frame] + reverb.process(send[frame])
+                output[frame] = tanhf(voicing.process(mixed) * masterGain)
             }
         }
     }

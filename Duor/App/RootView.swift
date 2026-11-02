@@ -6,6 +6,8 @@ import SwiftUI
 struct RootView: View {
     @State private var controller = DoorController()
     @State private var isShowingSettings = false
+    /// The iPhone Duo's inner display, as decided in `door`. Places the settings button.
+    @State private var isOnInnerDisplay = false
     @State private var deviceOrientation = DeviceOrientationMonitor()
     @AppStorage(DoorStyle.storageKey) private var style: DoorStyle = .oak
     @AppStorage(HardwareFinish.storageKey) private var hardware: HardwareFinish = .iron
@@ -30,8 +32,10 @@ struct RootView: View {
     private var look: DoorLook { DoorLook(style: style, hardware: hardware, scene: scene) }
 
     var body: some View {
-        // A navigation stack only for its toolbar: on the iPhone Duo the settings button then
-        // lives in the system's vertical control lane on the trailing edge.
+        // A navigation stack only for its toolbar: on the iPhone Duo's inner display the settings
+        // button then lives in the system's vertical control lane on the trailing edge. Anywhere
+        // else it stays in the top bar: on the cover display that edge is the door's latch side,
+        // and the lane would sit over the handle and take its taps.
         NavigationStack {
             door
                 .toolbar {
@@ -40,10 +44,13 @@ struct RootView: View {
                             isShowingSettings = true
                         }
                     }
-                    .axisBehavior(.verticalPreferred)
+                    .axisBehavior(isOnInnerDisplay ? .verticalPreferred : .horizontalOnly)
                 }
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .navigationBarTitleDisplayMode(.inline)
+                // No vertical lane at all off the inner display: it covers the cover display's
+                // latch edge (and the handle) even with nothing in it.
+                .toolbarVerticalBehavior(isOnInnerDisplay ? .automatic : .disabled)
         }
     }
 
@@ -77,6 +84,7 @@ struct RootView: View {
             .simultaneousGesture(swipe(screen: proxy.size, quarterTurns: turns), including: canSwipe ? .all : .subviews)
             .onChange(of: isInnerDisplay, initial: true) { _, isInner in
                 controller.screenChanged(isInnerDisplay: isInner)
+                isOnInnerDisplay = isInner
             }
         }
         // Dark, never white, if anything ever shows behind the door (crossfades, shakes).

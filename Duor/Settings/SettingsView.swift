@@ -90,12 +90,8 @@ struct SettingsView: View {
 /// Who made the door, for anyone curious enough to scroll all the way down: links to the maker's
 /// website and a way to send a message.
 private struct MakerSection: View {
-    private static let website = URL(string: "https://opensf.foundation/")!
+    private static let website = URL(string: "https://opensf.foundation/products/duor/")!
     private static let email = URL(string: "mailto:info@opensf.foundation?subject=Duor")!
-
-    private var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-    }
 
     var body: some View {
         Section {
@@ -106,11 +102,15 @@ private struct MakerSection: View {
                 Label("Knock on the maker's door", systemImage: "envelope")
             }
         } header: {
-            Text("Who made this app?")
-        } footer: {
-            Text(
-                "Duor \(version) is made with love by Jeff. Like Duor? Come and say hi!"
-            )
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Who made this app?")
+                Text("Duor is made with love by Jeff. Like the app? Come visit the workshop and say hi!")
+                    .font(.footnote)
+                    .fontWeight(.regular)
+                    // A fixed color: `.secondary` here would dim it twice, inside the dimmed header.
+                    .foregroundStyle(Color.secondary)
+                    .textCase(nil)
+            }
         }
     }
 }

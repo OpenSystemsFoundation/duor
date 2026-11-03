@@ -8,9 +8,8 @@ struct RootView: View {
     @State private var isShowingSettings = false
     /// Whether the window fills the screen (not in Split View), from `DoorHostingController`.
     var windowFit = WindowFit()
-    /// The screen the door is on, as decided in `door`. Places the settings button.
+    /// The screen the door is on, as decided in `door`.
     @State private var screen: DoorScreen = .single
-    private var isOnInnerDisplay: Bool { screen == .inner }
     @State private var deviceOrientation = DeviceOrientationMonitor()
     @State private var settings = DoorSettings()
 
@@ -23,10 +22,8 @@ struct RootView: View {
     private var look: DoorLook { settings.look }
 
     var body: some View {
-        // A navigation stack only for its toolbar: on the iPhone Duo's inner display the settings
-        // button then lives in the system's vertical control lane on the trailing edge. Anywhere
-        // else it stays in the top bar: on the cover display that edge is the door's latch side,
-        // and the lane would sit over the handle and take its taps.
+        // A navigation stack only for its toolbar: on the iPhone Duo the settings button then
+        // lives in the system's vertical control lane on the trailing edge, folded and unfolded.
         NavigationStack {
             door
                 .toolbar {
@@ -35,13 +32,10 @@ struct RootView: View {
                             isShowingSettings = true
                         }
                     }
-                    .axisBehavior(isOnInnerDisplay ? .verticalPreferred : .horizontalOnly)
+                    .axisBehavior(.verticalPreferred)
                 }
                 .toolbarBackground(.hidden, for: .navigationBar)
                 .navigationBarTitleDisplayMode(.inline)
-                // No vertical lane at all off the inner display: it covers the cover display's
-                // latch edge (and the handle) even with nothing in it.
-                .toolbarVerticalBehavior(isOnInnerDisplay ? .automatic : .disabled)
         }
     }
 

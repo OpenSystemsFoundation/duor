@@ -104,7 +104,8 @@ extension View {
     /// Describes the open door for VoiceOver, with an action to close it when swiping is on.
     func openDoorAccessibility(degrees: Double, onClose: (() -> Void)?) -> some View {
         accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text("Open door"))
+            // Not "Open door": that's the action on the closed door, and translates differently.
+            .accessibilityLabel(Text("Doorway"))
             .accessibilityValue(Text("Open \(Int(degrees)) degrees"))
             .accessibilityActions {
                 if let onClose {

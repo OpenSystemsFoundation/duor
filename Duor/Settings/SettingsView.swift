@@ -76,6 +76,8 @@ struct SettingsView: View {
                     }
                 }
 
+                LanguageSection()
+
                 MakerSection()
             }
             .navigationTitle("Settings")
@@ -87,6 +89,36 @@ struct SettingsView: View {
                 // On the iPhone Duo: in the vertical control lane, like the settings button.
                 .axisBehavior(.verticalPreferred)
             }
+        }
+    }
+}
+
+/// The language Duor is shown in. iOS picks it from the device's languages; the per-app language
+/// choice lives on Duor's page in the Settings app, so this opens that page instead of keeping a
+/// picker of its own.
+private struct LanguageSection: View {
+    @Environment(\.openURL) private var openURL
+
+    /// The language in use, named in itself ("Deutsch", "日本語").
+    private var currentLanguage: String {
+        let code = Bundle.main.preferredLocalizations.first ?? "en"
+        let name = Locale(identifier: code).localizedString(forIdentifier: code) ?? code
+        return name.prefix(1).capitalized + name.dropFirst()
+    }
+
+    var body: some View {
+        Section {
+            Button {
+                if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+            } label: {
+                LabeledContent {
+                    Text(verbatim: currentLanguage)
+                } label: {
+                    Label("Language", systemImage: "globe")
+                }
+            }
+        } footer: {
+            Text("Duor uses your device's language. To choose another language just for Duor, change it in the Settings app.")
         }
     }
 }

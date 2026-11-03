@@ -66,6 +66,9 @@ struct RootView: View {
                 }
                 .transition(.opacity)
             }
+            // The door is a physical thing on the phone's hinge: never mirrored in right-to-left
+            // languages. (Settings, presented below, still is.)
+            .environment(\.layoutDirection, .leftToRight)
             .animation(.easeInOut(duration: 0.2), value: isInnerDisplay)
             // On the whole screen, not on the door: the door slides off the screen mid-swipe.
             .contentShape(.rect)
@@ -183,6 +186,8 @@ private struct SwipeHint: View {
             .padding(.vertical, 10)
             .background(.regularMaterial, in: .capsule)
             .allowsHitTesting(false)
+            // "Left" means the screen's left in every language, so the arrow must not mirror.
+            .environment(\.layoutDirection, .leftToRight)
     }
 }
 

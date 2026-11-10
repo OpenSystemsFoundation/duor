@@ -271,7 +271,7 @@ extension SceneLife {
     }
 
     /// A beagle-ish dog: floppy ears, a wagging tail, tongue out.
-    private static func dog(in context: inout GraphicsContext, size: CGFloat, time: TimeInterval) {
+    static func dog(in context: inout GraphicsContext, size: CGFloat, time: TimeInterval) {
         let coat = Color(red: 0.86, green: 0.62, blue: 0.36)
         let white = Color(red: 0.97, green: 0.94, blue: 0.88)
         let brown = Color(red: 0.42, green: 0.26, blue: 0.14)

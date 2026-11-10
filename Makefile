@@ -10,7 +10,7 @@ ARCHIVE     := build/Duor.xcarchive
 # Every upload needs a new build number: use the commit count, which only goes up.
 BUILD_NUMBER := $(shell git rev-list --count HEAD)
 
-.PHONY: build test run sounds format lint archive upload clean
+.PHONY: build test run sounds banner format lint archive upload clean
 
 build:
 	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) -destination '$(DESTINATION)' -derivedDataPath $(DERIVED)
@@ -29,6 +29,13 @@ sounds:
 	mkdir -p build
 	xcrun swiftc -O -swift-version 6 Duor/Audio/DSP/*.swift Tools/RenderSounds/main.swift -o build/render-sounds
 	build/render-sounds build/sounds
+
+# Render the App Store header (21:9) and search results (3:2) artwork to appstore/creative/.
+banner:
+	mkdir -p build appstore/creative
+	xcrun swiftc -O -swift-version 6 Duor/Door/Scenes/*.swift Duor/Door/CatStories.swift Duor/Door/DoorStyle.swift \
+		Duor/Audio/DSP/*.swift Tools/RenderBanner/main.swift -o build/render-banner
+	build/render-banner appstore/creative
 
 format:
 	swift format --in-place --recursive Duor DuorTests Tools

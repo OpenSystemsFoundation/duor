@@ -49,6 +49,10 @@ docs/         Solution design
 
 The project uses Xcode 27's JSON project format (`Duor.xcodeproj/project.xcproj`). When adding a file, add it to the matching group with the right `target-membership`.
 
+## App Store artwork
+
+`make banner` renders the product page header (3840×1646) and search results image (3840×2560) to `appstore/creative/`, drawn by the app's own living room code with the cat and the dog. Upload them in App Store Connect → the version → Header and Search Results.
+
 ## Languages
 
 Duor ships in 15 languages (English plus 14 translations in `Duor/Resources/Localizable.xcstrings`), and its App Store listing in 16 locales. See section 4.6 of the [solution design](docs/SOLUTION_DESIGN.md).

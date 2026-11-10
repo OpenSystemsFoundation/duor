@@ -118,7 +118,9 @@ private struct LanguageSection: View {
                 }
             }
         } footer: {
-            Text("Duor uses your device's language. To choose another language just for Duor, change it in the Settings app.")
+            Text(
+                "Duor uses your device's language. To choose another language just for Duor, change it in the Settings app."
+            )
         }
     }
 }

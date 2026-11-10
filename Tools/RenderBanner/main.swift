@@ -10,7 +10,8 @@ func render(width: CGFloat, height: CGFloat, to path: String) {
     let view = Canvas { context, size in
         // The room is drawn for a narrow doorway, so draw it in a centre "core" and extend the
         // wall, floor, skirting and floorboards out to the sides.
-        let coreWidth = min(size.width, size.height * 1.15)
+        // Wider than about 1.05× the height, the picture (sized by width) reaches down into the cabinet.
+        let coreWidth = min(size.width, size.height * 0.75)
         let core = CGRect(x: (size.width - coreWidth) / 2, y: 0, width: coreWidth, height: size.height)
         let horizon = size.height * 0.66
         context.fill(
@@ -54,15 +55,15 @@ func render(width: CGFloat, height: CGFloat, to path: String) {
         }
         let cat = spot(0.25)
         SceneLife.critter(
-            in: &context, at: CGPoint(x: core.midX - coreWidth * 0.22, y: cat.y), facing: 1
+            in: &context, at: CGPoint(x: core.midX - size.height * 0.25, y: cat.y), facing: 1
         ) {
-            SceneLife.cat(in: &$0, size: coreWidth * 0.3 * cat.scale, time: 0.3, pose: .stand)
+            SceneLife.cat(in: &$0, size: size.height * 0.345 * cat.scale, time: 0.3, pose: .stand)
         }
         let dog = spot(0.2)
         SceneLife.critter(
-            in: &context, at: CGPoint(x: core.midX + coreWidth * 0.24, y: dog.y), facing: -1
+            in: &context, at: CGPoint(x: core.midX + size.height * 0.28, y: dog.y), facing: -1
         ) {
-            SceneLife.dog(in: &$0, size: coreWidth * 0.34 * dog.scale, time: 0.12)
+            SceneLife.dog(in: &$0, size: size.height * 0.39 * dog.scale, time: 0.12)
         }
     }
     .frame(width: width, height: height)

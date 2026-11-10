@@ -175,6 +175,7 @@ A gear button opens a sheet with three picture pickers. Choices live in `DoorSet
 | **Hardware** | Iron, Brass, Chrome, Copper, Bronze | Colors and shine of hinges, handle, studs and strike plate, *and* the pitch and ring of the latch and hinges. |
 | **Behind the door** | Living room, Great hall, Beach, Forest, Outer space, Brick wall | Picking a door also picks its scene (Oak → living room, Cottage → beach, Barn → forest, Castle → great hall, Spaceship → outer space, Metal → brick wall). |
 | **Swipe mode** | Off (default with a hinge), on | Whether the door can be swiped open and shut (§4.2). Only shown with a hinge: without one, swiping is the only way in, so it stays on. With a hinge the hinge opens the door, so swiping starts off; a choice the user saved is kept (`SwipeMode`). Whether there is a hinge is detected at runtime from the first `onHingeChange` sample, not from the device model, so any foldable counts. Turning it off hands a swiped door back to the hinge. |
+| **Language** | The device's language | Shows the language in use, named in itself ("Deutsch", "日本語"). Tapping it opens Duor's page in the Settings app, where iOS keeps the per-app language choice; Duor has no picker of its own (§4.6). |
 
 Hinge updates are paused (`isEnabled: false`) while the sheet is open, so browsing doesn't creak. Debug builds open the sheet on launch with `-showSettings YES` (for screenshots and UI tests); all three settings can also be passed as launch arguments, e.g. `-doorStyle castle -hardware bronze -insideScene space`.
 
@@ -201,6 +202,13 @@ The drawn leaf has weight. It follows the hinge on a slightly bouncy spring (`Sw
 - **Real Duo:** the screen half already stands at the physical angle, so only the spring's lag is drawn (physical − spring, clamped), never the full swing twice.
 
 ---
+
+### 4.6 Languages
+
+Duor ships in 15 languages: English (the source) plus Arabic, Chinese (Simplified and Traditional), Dutch, French, German, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Spanish and Turkish. All strings live in `Resources/Localizable.xcstrings`; iOS picks the language from the device, or from Duor's own language setting in the Settings app.
+
+- **Right-to-left:** the door is a physical object on the phone's hinge, so the door view is forced `.leftToRight` in every language (`RootView`). Settings still mirrors in Arabic. The swipe hint arrow stays left-to-right too, because "left" means the screen's left.
+- **App Store:** one listing per language in `appstore/release.json` (16 locales: Spanish has both `es-ES` and `es-MX`), each with translated screenshot captions.
 
 ## 5. Architecture
 

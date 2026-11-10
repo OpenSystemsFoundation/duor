@@ -49,6 +49,10 @@ docs/         Solution design
 
 The project uses Xcode 27's JSON project format (`Duor.xcodeproj/project.xcproj`). When adding a file, add it to the matching group with the right `target-membership`.
 
+## Languages
+
+Duor ships in 15 languages (English plus 14 translations in `Duor/Resources/Localizable.xcstrings`), and its App Store listing in 16 locales. See section 4.6 of the [solution design](docs/SOLUTION_DESIGN.md).
+
 ## Sounds
 
 All sounds are synthesized in real time (no audio files): modal resonators for knocks, latches and slams, a stick-slip friction model for the creak, and a small room reverb. See section 6 of the [solution design](docs/SOLUTION_DESIGN.md).

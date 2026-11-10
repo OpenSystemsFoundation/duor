@@ -12,8 +12,12 @@ let look = DoorLook(style: .oak, hardware: .brass, scene: .livingRoom)
 /// The pieces of the picture, from the left: the open leaf, the hinge line, the doorway.
 struct Layout {
     let size: CGSize
-    var leaf: CGRect { CGRect(x: 0, y: 0, width: min(size.height * 0.5, size.width * 0.25), height: size.height) }
-    var hingeX: CGFloat { leaf.maxX }
+    /// Where the door turns. Far enough in that the open leaf has room to swing toward us.
+    var hingeX: CGFloat { min(size.height * 0.62, size.width * 0.33) }
+    /// The leaf as if shut flat against the wall, before it's turned open about its hinge edge.
+    var leaf: CGRect {
+        CGRect(x: hingeX - opening.height * 0.5, y: casing, width: opening.height * 0.5, height: opening.height)
+    }
     var jamb: CGFloat { size.height * 0.02 }
     var casing: CGFloat { size.height * 0.06 }
     var opening: CGRect {
@@ -149,10 +153,11 @@ struct Banner: View {
                 paintRoom(in: &room, rect: layout.opening)
                 paintFrame(in: &context, layout: layout)
             }
-            // The leaf, open about 50° toward us on its hinges, showing its inside face.
+            // The leaf, open about 62° toward us on its hinges, showing its inside face.
             DoorLeafArt(look: look, hingeSide: .trailing, face: .inside)
                 .frame(width: layout.leaf.width, height: layout.leaf.height)
-                .rotation3DEffect(.degrees(50), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.4)
+                .rotation3DEffect(.degrees(62), axis: (x: 0, y: 1, z: 0), anchor: .trailing, perspective: 0.75)
+                .offset(x: layout.leaf.minX, y: layout.leaf.minY)
         }
         .frame(width: layout.size.width, height: layout.size.height)
         .environment(\.layoutDirection, .leftToRight)

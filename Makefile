@@ -33,7 +33,7 @@ sounds:
 # Render the App Store header (21:9) and search results (3:2) artwork to appstore/creative/.
 banner:
 	mkdir -p build appstore/creative
-	xcrun swiftc -O -swift-version 6 Duor/Door/Scenes/*.swift Duor/Door/CatStories.swift Duor/Door/DoorStyle.swift \
+	xcrun swiftc -O -swift-version 6 Duor/Door/Scenes/*.swift Duor/Door/CatStories.swift Duor/Door/DoorStyle.swift Duor/Door/DoorArt.swift \
 		Duor/Audio/DSP/*.swift Tools/RenderBanner/main.swift -o build/render-banner
 	build/render-banner appstore/creative
 

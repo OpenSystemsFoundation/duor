@@ -63,7 +63,8 @@ func render(width: CGFloat, height: CGFloat, to path: String) {
         SceneLife.critter(
             in: &context, at: CGPoint(x: core.midX + size.height * 0.28, y: dog.y), facing: -1
         ) {
-            SceneLife.dog(in: &$0, size: size.height * 0.39 * dog.scale, time: 0.12)
+            // At a time where sin(10 t) = 0 the legs are straight: standing, not mid-stride.
+            SceneLife.dog(in: &$0, size: size.height * 0.39 * dog.scale, time: .pi / 10)
         }
     }
     .frame(width: width, height: height)

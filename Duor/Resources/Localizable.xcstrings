@@ -51,6 +51,12 @@
             "value" : "In elke scène achter de deur woont een kat, en elke kat voert iets anders uit."
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "W każdej scenie za drzwiami pojawia się kot, a każdy z nich coś knuje."
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -131,6 +137,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Schuur"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stodoła"
           }
         },
         "pt-BR" : {
@@ -215,6 +227,12 @@
             "value" : "Strand"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plaża"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -295,6 +313,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Achter de deur"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Za drzwiami"
           }
         },
         "pt-BR" : {
@@ -379,6 +403,12 @@
             "value" : "Messing"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mosiądz"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -459,6 +489,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Stenen muur"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ceglany mur"
           }
         },
         "pt-BR" : {
@@ -543,6 +579,12 @@
             "value" : "Brons"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brąz"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -623,6 +665,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kasteel"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamek"
           }
         },
         "pt-BR" : {
@@ -707,6 +755,12 @@
             "value" : "Kattenliefhebbers"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dla kociarzy"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -787,6 +841,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chroom"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chrom"
           }
         },
         "pt-BR" : {
@@ -871,6 +931,12 @@
             "value" : "Deur sluiten"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamknij drzwi"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -951,6 +1017,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gesloten deur"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamknięte drzwi"
           }
         },
         "pt-BR" : {
@@ -1035,6 +1107,12 @@
             "value" : "Koper"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Miedź"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1115,6 +1193,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cottage"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chatka"
           }
         },
         "pt-BR" : {
@@ -1199,6 +1283,12 @@
             "value" : "Gereed"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gotowe"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1279,6 +1369,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deur"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drzwi"
           }
         },
         "pt-BR" : {
@@ -1363,6 +1459,12 @@
             "value" : "Deuropening"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wejście"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1443,6 +1545,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tik twee keer om aan te kloppen."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stuknij dwukrotnie, aby zapukać."
           }
         },
         "pt-BR" : {
@@ -1527,6 +1635,12 @@
             "value" : "Duor is met liefde gemaakt door Jeff. Vind je de app leuk? Kom langs in de werkplaats en zeg hallo!"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duor powstał z miłością, a zrobił go Jeff. Podoba ci się aplikacja? Wpadnij do warsztatu i się przywitaj!"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1607,6 +1721,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Duor gebruikt de taal van je apparaat. Wil je alleen voor Duor een andere taal, wijzig die dan in de app Instellingen."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Duor używa języka twojego urządzenia. Aby wybrać inny język tylko dla Duor, zmień go w aplikacji Ustawienia."
           }
         },
         "pt-BR" : {
@@ -1691,6 +1811,12 @@
             "value" : "Bos"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1771,6 +1897,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Grote zaal"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wielka sala"
           }
         },
         "pt-BR" : {
@@ -1855,6 +1987,12 @@
             "value" : "Beslag"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Okucia"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1935,6 +2073,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Scharnieren, deurklink en schoot. Elk metaal klinkt ook een beetje anders."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zawiasy, klamka i zatrzask. Każdy metal brzmi też trochę inaczej."
           }
         },
         "pt-BR" : {
@@ -2019,6 +2163,12 @@
             "value" : "IJzer"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Żelazo"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2099,6 +2249,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klop aan bij de maker"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapukaj do drzwi twórcy"
           }
         },
         "pt-BR" : {
@@ -2183,6 +2339,12 @@
             "value" : "Taal"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Język"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2263,6 +2425,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Woonkamer"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salon"
           }
         },
         "pt-BR" : {
@@ -2347,6 +2515,12 @@
             "value" : "Metaal"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Metalowe"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2427,6 +2601,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eiken"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dąb"
           }
         },
         "pt-BR" : {
@@ -2511,6 +2691,12 @@
             "value" : "%lld graden open"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwarte: %lld°"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2591,6 +2777,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Deur openen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwórz drzwi"
           }
         },
         "pt-BR" : {
@@ -2675,6 +2867,12 @@
             "value" : "Heelal"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kosmos"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2755,6 +2953,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Instellingen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ustawienia"
           }
         },
         "pt-BR" : {
@@ -2839,6 +3043,12 @@
             "value" : "Ruimteschip"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statek kosmiczny"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2919,6 +3129,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Veeg naar links om de deur te openen"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przesuń w lewo, aby otworzyć drzwi"
           }
         },
         "pt-BR" : {
@@ -3003,6 +3219,12 @@
             "value" : "Veeg naar links om de deur te openen en naar rechts om hem te sluiten, dichtgevouwen of opengevouwen."
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przesuń w lewo, aby otworzyć drzwi, i w prawo, aby je zamknąć, po złożeniu i po rozłożeniu."
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3083,6 +3305,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Veegmodus"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryb przesuwania"
           }
         },
         "pt-BR" : {
@@ -3167,6 +3395,12 @@
             "value" : "Bezoek de werkplaats"
           }
         },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odwiedź warsztat"
+          }
+        },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3247,6 +3481,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wie heeft deze app gemaakt?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kto stworzył tę aplikację?"
           }
         },
         "pt-BR" : {

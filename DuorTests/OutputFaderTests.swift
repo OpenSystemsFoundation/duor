@@ -56,6 +56,10 @@ struct OutputFaderTests {
         let fader = OutputFader(sampleRate: 48_000)
         synth.play(.slam)
         var samples = [Float](repeating: 0, count: frames)
+        // A slam starts with the air pushed ahead of the leaf: let the hit itself arrive first.
+        for _ in 0..<Int(DoorSynth.slamLead * 48_000) / frames + 1 {
+            samples.withUnsafeMutableBufferPointer { synth.render(into: $0) }
+        }
         var peaks: [Float] = []
         for block in 0..<6 {
             if block == 2 { fader.requestFade() }

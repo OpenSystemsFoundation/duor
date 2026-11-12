@@ -32,7 +32,7 @@ struct DoorSynthTests {
     @Test(arguments: DoorSound.allCases)
     func soundIsAudibleBoundedAndDecays(_ sound: DoorSound) {
         let synth = DoorSynth(sampleRate: sampleRate, seed: 7)
-        synth.play(sound, volume: 1)
+        synth.play(sound)
         let samples = render(synth, seconds: 2.5)
 
         #expect(samples.allSatisfy { $0.isFinite })
@@ -62,7 +62,7 @@ struct DoorSynthTests {
     @Test func creakFollowsHingeSpeed() {
         func energy(atVelocity velocity: Float) -> Float {
             let synth = DoorSynth(sampleRate: sampleRate, seed: 5)
-            synth.setCreak(velocity: velocity)
+            synth.setSwing(angle: 60, velocity: velocity)
             let samples = render(synth, seconds: 0.6).suffix(Int(0.3 * sampleRate))
             return samples.reduce(0) { $0 + $1 * $1 }
         }
@@ -73,9 +73,9 @@ struct DoorSynthTests {
 
     @Test func creakFadesWhenHingeStops() {
         let synth = DoorSynth(sampleRate: sampleRate, seed: 5)
-        synth.setCreak(velocity: 90)
+        synth.setSwing(angle: 60, velocity: 90)
         _ = render(synth, seconds: 0.5)
-        synth.setCreak(velocity: 0)
+        synth.setSwing(angle: 60, velocity: 0)
         let after = render(synth, seconds: 1.5)
         #expect(peak(after.suffix(Int(0.3 * sampleRate))) < 0.001)
     }
@@ -97,7 +97,7 @@ struct DoorSynthTests {
         ]
         for sound in DoorSound.allCases {
             let synth = DoorSynth(sampleRate: sampleRate, profile: profiles[door]!.with(metal: .brass), seed: 9)
-            synth.play(sound, volume: 1)
+            synth.play(sound)
             let samples = render(synth, seconds: 3.5)
             #expect(samples.allSatisfy { $0.isFinite }, "\(door) \(sound)")
             #expect(peak(samples) > 0.05, "\(door) \(sound) too quiet")

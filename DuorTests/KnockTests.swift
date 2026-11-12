@@ -9,9 +9,9 @@ private final class SoundRecorder: DoorSoundPlaying {
     var played: [DoorSound] = []
 
     func apply(profile: SoundProfile) {}
-    func play(_ sound: DoorSound, volume: Float) { played.append(sound) }
+    func play(_ sound: DoorSound, speed: Double) { played.append(sound) }
     func knock(at spot: KnockSpot, volume: Float) { knocks.append((spot, volume)) }
-    func setCreak(velocity: Double) {}
+    func setSwing(angle: Double, velocity: Double) {}
 }
 
 @Suite("Knocking")

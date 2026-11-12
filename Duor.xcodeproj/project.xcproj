@@ -124,6 +124,7 @@
         { "path": "DoorSwipeTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "DoorSynthTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "SwingSoundTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
+        { "path": "CreakTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "OutputFaderTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "CatStoryTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "KnockTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },

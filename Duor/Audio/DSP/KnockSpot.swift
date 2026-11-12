@@ -96,7 +96,9 @@ nonisolated struct KnockSpot: Sendable, Equatable {
         case 2: SIMD2(1, 3)
         case 3: SIMD2(2, 1)
         case 4: SIMD2(1, 4)
-        default: SIMD2(2, 2)
+        case 5: SIMD2(2, 2)
+        case 6: SIMD2(2, 3)
+        default: SIMD2(1, 5)
         }
     }
 

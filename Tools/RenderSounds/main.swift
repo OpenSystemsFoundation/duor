@@ -103,6 +103,9 @@ func swing(_ gesture: Gesture, from start: Float, rate: Float = 60, irregular: B
 
 // MARK: - Rendering
 
+/// What the gain staging did during the last `render`.
+nonisolated(unsafe) var lastMeter = SynthMeter()
+
 func render(_ cues: [Cue], seconds: Float, profile: SoundProfile, speaker: Bool, seed: UInt32 = 42) -> [Float] {
     let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: seed, speakerVoicing: speaker)
     let frameCount = Int(seconds * sampleRate)
@@ -121,14 +124,19 @@ func render(_ cues: [Cue], seconds: Float, profile: SoundProfile, speaker: Bool,
         }
         frame += count
     }
+    lastMeter = synth.takeMeter()
     return samples
 }
 
 struct Measurement: Codable {
     var peak: Float
     var rms: Float
-    /// Level going into the final soft clipper, worked back from the output peak (tanh(0.9 x)).
+    /// Level going into the final soft clipper, worked back from the output peak.
     var clipperIn: Float
+    /// Peak of the mix before the limiter (dBFS; the limiter's ceiling is 0), and the most the
+    /// limiter turned it down (dB, 0 = it never worked).
+    var mixPeak: Float?
+    var limiting: Float?
     var onPhone: Float
     var centroid: Float
     var presence: Float
@@ -156,9 +164,12 @@ func measure(
     let decay = decayTimes(samples)
     var measurement = Measurement(
         peak: decibels(peakValue), rms: decibels(rms(samples[...])),
-        clipperIn: decibels(atanh(min(peakValue, 0.999_999)) / 0.9), onPhone: decibels(phoneSpeakerRMS(samples)),
+        clipperIn: decibels(atanh(min(peakValue / DoorSynth.outputGain, 0.999_999))),
+        onPhone: decibels(phoneSpeakerRMS(samples)),
         centroid: spectrum.centroid, presence: spectrum.presence2to5k, t60: decay.t60, ring: decay.ring,
         largestStep: largestStep(samples), finite: samples.allSatisfy(\.isFinite))
+    measurement.mixPeak = decibels(lastMeter.mixPeak)
+    measurement.limiting = decibels(lastMeter.limiterGain)
     if continuous {
         let tonal = periodicity(samples)
         measurement.periodicityMax = tonal.maximum
@@ -182,6 +193,53 @@ let doors: [(String, SoundProfile)] = [
 let metals: [(String, MetalTone)] = [
     ("iron", .iron), ("brass", .brass), ("chrome", .chrome), ("copper", .copper), ("bronze", .bronze),
 ]
+
+let scenes: [(String, SceneAcoustics)] = [
+    ("living-room", .livingRoom), ("great-hall", .greatHall), ("beach", .beach), ("forest", .forest),
+    ("space", .space), ("brick-wall", .brickWall),
+]
+
+/// The decay of a room on its own: a click through `RoomReverb`, T60 from the Schroeder curve
+/// (-15 to -45 dB, below 1 kHz), and the energy that comes back against the click's.
+func roomDecay(_ acoustics: RoomAcoustics) -> (t60: Float, energy: Float) {
+    var room = RoomReverb(sampleRate: sampleRate, acoustics: acoustics)
+    let count = Int(6 * sampleRate)
+    var input = [Float](repeating: 0, count: count)
+    var output = [Float](repeating: 0, count: count)
+    input[0] = 1
+    input.withUnsafeMutableBufferPointer { source in
+        output.withUnsafeMutableBufferPointer { destination in
+            var start = 0
+            while start < count {
+                let end = min(start + blockSize, count)
+                room.process(
+                    UnsafeMutableBufferPointer(rebasing: source[start..<end]),
+                    into: UnsafeMutableBufferPointer(rebasing: destination[start..<end]))
+                start = end
+            }
+        }
+    }
+    let total = output.reduce(0) { $0 + $1 * $1 }
+    // The decay time is that of the lows and middle; the highs die sooner (damping).
+    var lowPass = Biquad(.lowPass, frequency: 1_000, q: 0.707, sampleRate: sampleRate)
+    let lows = output.map { lowPass.process($0) }
+    guard total > 0 else { return (0, 0) }
+    var start = 0
+    var end = 0
+    var sum = 0.0
+    for sample in lows { sum += Double(sample * sample) }
+    let whole = sum
+    for (index, sample) in lows.enumerated() {
+        sum -= Double(sample * sample)
+        let level = 10 * log10(max(sum / whole, 1e-15))
+        if start == 0, level <= -15 { start = index }
+        if end == 0, level <= -45 {
+            end = index
+            break
+        }
+    }
+    return (Float(end - start) / sampleRate * 2, total)
+}
 
 /// Event speeds in degrees per second, typical for each kind of close (see `DoorMotionInterpreter`).
 let gentleSpeed: Float = 50, firmSpeed: Float = 150, slamSpeed: Float = 320, hardSlamSpeed: Float = 600
@@ -259,6 +317,17 @@ func runScenarios() throws {
             cues: swing(move(5, 120, over: 1.2), from: 0.1, rate: rate, irregular: irregular),
             profile: .oak, continuous: true)
     }
+    // What is beyond the door: the same open stop, door wide open, onto each inside scene.
+    for (name, scene) in scenes {
+        var profile = SoundProfile.oak
+        profile.scene = scene
+        try measure(
+            "oak-scene-\(name)-open-stop", seconds: 3.5,
+            cues: [
+                Cue(time: 0) { $0.setSwingForTool(angle: 150, velocity: 0) },
+                event(.openStop, speed: openStopSpeed, at: 0.4),
+            ], profile: profile)
+    }
     // Stacked hits: 200 commands at once.
     try measure(
         "oak-burst", seconds: 1.5, cues: (0..<200).map { _ in event(.slam, speed: slamSpeed, at: 0.05) }, profile: .oak)
@@ -311,6 +380,26 @@ func report() {
         }
     }
 
+    print(
+        "\n== Gain staging: mix peak before the limiter (dBFS, ceiling 0) flat / voiced, and the most the limiter worked (dB)"
+    )
+    print(pad("door", 10), events.map { pad($0.0, 20) }.joined(), pad("sequence", 20))
+    for (door, _) in doors {
+        var row = pad(door, 10)
+        var worst: Float = 0
+        for name in events.map(\.0) + ["sequence"] {
+            guard let flat = results["\(door)-\(name)"], let voiced = results["speaker-\(door)-\(name)"] else {
+                continue
+            }
+            row += pad(number(flat.mixPeak ?? 0, 6) + " /" + number(voiced.mixPeak ?? 0, 6), 20)
+            worst = min(worst, flat.limiting ?? 0, voiced.limiting ?? 0)
+        }
+        print(row, " limiter", number(worst, 5))
+    }
+    if let burst = results["oak-burst"] {
+        print("oak-burst  mix peak", number(burst.mixPeak ?? 0), "  limiter", number(burst.limiting ?? 0))
+    }
+
     print("\n== Door balance: full sequence RMS (flat / voiced phone measure)")
     let sequenceLevels = doors.compactMap { door, _ in results["\(door)-sequence"].map { (door, $0) } }
     for (door, value) in sequenceLevels {
@@ -348,6 +437,29 @@ func report() {
     for (door, _) in doors {
         if let m = results["\(door)-slam"] {
             print(pad(door, 10), "T60", number(m.t60, 5, 2), "s   ring", number(m.ring, 5, 2), "s")
+        }
+    }
+
+    print("\n== Rooms on their own (a click through the reverb): T60 measured / asked, energy against the click")
+    for (door, profile) in doors {
+        let decay = roomDecay(profile.space)
+        print(
+            pad(door, 12), "T60", number(decay.t60, 5, 2), "/", number(profile.space.decay, 4, 2), "s   energy",
+            number(10 * log10(max(decay.energy, 1e-12)), 6), "dB")
+    }
+    for (name, scene) in scenes where scene.level > 0 {
+        let decay = roomDecay(scene.room)
+        print(
+            pad("(\(name))", 12), "T60", number(decay.t60, 5, 2), "/", number(scene.room.decay, 4, 2),
+            "s   energy", number(10 * log10(max(decay.energy, 1e-12)), 6), "dB")
+    }
+
+    print("\n== Beyond the door: oak open stop with the door wide open, per inside scene (rms, T60, ring)")
+    for (name, _) in scenes {
+        if let m = results["oak-scene-\(name)-open-stop"] {
+            print(
+                pad(name, 12), "rms", number(m.rms), "  T60", number(m.t60, 5, 2), "s   ring", number(m.ring, 5, 2), "s"
+            )
         }
     }
 

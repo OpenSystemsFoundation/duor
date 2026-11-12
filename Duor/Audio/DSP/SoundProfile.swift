@@ -22,6 +22,47 @@ nonisolated struct SoundProfile: Sendable {
     var character = SoundCharacter()
     /// How a knuckle meets this door.
     var knockTouch = KnockTouch()
+    /// The noise of each part's surfaces meeting, next to its ring.
+    var contact = ContactSet()
+    /// The room the door stands in. `room` sets how loud it is.
+    var space = RoomAcoustics.hallway
+    /// What is beyond the door, heard as it opens. Set from the inside scene.
+    var scene = SceneAcoustics.livingRoom
+    /// Output level of this door against the others (linear), so switching doors doesn't change
+    /// the volume: a full knock, open, slam sequence of every door lands within a few dB.
+    var trim: Float = 1
+}
+
+/// The contact noise of each part of a door (see `ContactNoise`): what is heard of the surfaces
+/// themselves in the first milliseconds of a hit. The defaults are an oak door with steel hardware.
+nonisolated struct ContactSet: Sendable {
+    /// Something hard meeting the leaf: short and mid-band.
+    var panel = ContactNoise(level: 0.22, frequency: 1_300, q: 0.8, duration: 0.005)
+    /// A knuckle on the leaf: skin softens it, so quieter and shorter than wood on wood.
+    var knock = ContactNoise(level: 0.12, frequency: 1_700, q: 0.8, duration: 0.003)
+    /// The leaf landing in the frame all along its edge: lower and a little longer.
+    var frame = ContactNoise(level: 0.28, frequency: 850, q: 0.7, duration: 0.008)
+    /// The steel bolt on its strike plate: very short and bright.
+    var latch = ContactNoise(level: 0.3, frequency: 5_200, q: 1.2, duration: 0.002)
+    /// Hinge knuckles knocking on the pin.
+    var hinge = ContactNoise(level: 0.2, frequency: 3_600, q: 1.5, duration: 0.0025)
+    /// The door stop the open leaf runs into. Rubber: long and dull.
+    var stop = ContactNoise(level: 0.6, frequency: 420, q: 0.7, duration: 0.018)
+
+    /// The same surfaces on a bigger or smaller, harder or softer door.
+    func scaled(pitch: Float, duration: Float = 1, level: Float = 1) -> ContactSet {
+        var copy = self
+        func scale(_ noise: inout ContactNoise) {
+            noise.frequency *= pitch
+            noise.duration *= duration
+            noise.level *= level
+        }
+        scale(&copy.panel)
+        scale(&copy.knock)
+        scale(&copy.frame)
+        scale(&copy.stop)
+        return copy
+    }
 }
 
 /// How a knock lands: soft or hard knuckle, how much bright snap, how much deep thump.
@@ -59,6 +100,8 @@ extension SoundProfile {
             ModeSpec(480, 0.045, 0.80),
             ModeSpec(730, 0.030, 0.55),
             ModeSpec(1150, 0.018, 0.35),
+            ModeSpec(1640, 0.013, 0.24),
+            ModeSpec(2350, 0.009, 0.15),
         ],
         knock: [
             ModeSpec(160, 0.028, 0.30),
@@ -67,6 +110,8 @@ extension SoundProfile {
             ModeSpec(580, 0.015, 0.75),
             ModeSpec(860, 0.011, 0.50),
             ModeSpec(1350, 0.007, 0.35),
+            ModeSpec(1900, 0.005, 0.24),
+            ModeSpec(2650, 0.004, 0.15),
         ],
         frame: [
             ModeSpec(70, 0.140, 0.60),
@@ -75,19 +120,27 @@ extension SoundProfile {
             ModeSpec(280, 0.070, 0.70),
             ModeSpec(420, 0.050, 0.50),
             ModeSpec(640, 0.035, 0.30),
+            ModeSpec(930, 0.026, 0.20),
+            ModeSpec(1380, 0.018, 0.12),
         ],
-        // A latch bolt is small steel mounted in wood: it clacks, it doesn't ring.
+        // A latch bolt is small steel mounted in wood: it clacks, it doesn't ring. Its two lowest
+        // modes come as close pairs (bolt and strike plate), which beat for a moment.
         latch: [
             ModeSpec(1450, 0.014, 1.00),
+            ModeSpec(1492, 0.013, 0.60),
             ModeSpec(2300, 0.011, 0.80),
+            ModeSpec(2356, 0.010, 0.50),
             ModeSpec(3400, 0.009, 0.60),
             ModeSpec(4700, 0.007, 0.45),
             ModeSpec(6200, 0.005, 0.30),
             ModeSpec(8100, 0.004, 0.20),
         ],
+        // Two leaves on one pin: the lowest modes are pairs a few hertz apart.
         hinge: [
             ModeSpec(980, 0.050, 0.80),
+            ModeSpec(1004, 0.046, 0.50),
             ModeSpec(1530, 0.040, 1.00),
+            ModeSpec(1561, 0.037, 0.60),
             ModeSpec(2380, 0.030, 0.70),
             ModeSpec(3310, 0.025, 0.50),
             ModeSpec(4700, 0.018, 0.30),
@@ -140,10 +193,12 @@ nonisolated struct MetalTone: Sendable {
 }
 
 extension SoundProfile {
-    /// Thin window glass: rings bright and long.
+    /// Thin window glass: rings bright and long, and shimmers (close pairs of modes).
     nonisolated static let glass: ModeSet = [
         ModeSpec(2100, 0.040, 0.80),
+        ModeSpec(2136, 0.037, 0.50),
         ModeSpec(3300, 0.035, 1.00),
+        ModeSpec(3347, 0.032, 0.60),
         ModeSpec(4700, 0.030, 0.80),
         ModeSpec(6100, 0.025, 0.60),
         ModeSpec(7900, 0.020, 0.40),
@@ -168,6 +223,9 @@ extension SoundProfile {
     /// This door with different hardware: retunes the latch, hinges and the hinge's squeal.
     nonisolated func with(metal: MetalTone) -> SoundProfile {
         var profile = self
+        // Softer metals click a little lower, too.
+        profile.contact.latch.frequency *= metal.pitch
+        profile.contact.hinge.frequency *= metal.pitch
         profile.latch = latch.scaled(pitch: metal.pitch, decay: metal.decay)
         profile.hinge = hinge.scaled(pitch: metal.pitch, decay: metal.decay)
         profile.creak.formants = creak.formants.scaled(pitch: metal.pitch.squareRoot())
@@ -182,6 +240,10 @@ extension SoundProfile {
         var profile = SoundProfile.oakWood
         profile.knock = oakWood.knock.scaled(pitch: 0.95, decay: 0.7, gain: 1.4)
         profile.knockTouch = KnockTouch(contact: 0.0019...0.0025, snapLevel: 0, snapPitch: 1, thump: 0.12)
+        // A fist is padded: hardly any crack.
+        profile.contact.knock = ContactNoise(level: 0.07, frequency: 1_100, q: 0.7, duration: 0.004)
+        profile.space = .hallway
+        profile.trim = 1
         return profile
     }()
 
@@ -205,6 +267,10 @@ extension SoundProfile {
         // A crisp knuckle knock: the reference wood's knock with its sharp snap.
         profile.knock = oakWood.knock
         profile.knockTouch = KnockTouch()
+        // Light, painted wood: a higher, thinner tick.
+        profile.contact = ContactSet().scaled(pitch: 1.25, duration: 0.85, level: 0.9)
+        profile.space = .cottage
+        profile.trim = 0.8
         return profile
     }()
 
@@ -230,6 +296,11 @@ extension SoundProfile {
         profile.bed.rollLevel = 0.025
         profile.room = 0.2
         profile.character.looseBoards = 0.7
+        // Big rough boards: lower, longer, louder. No rubber here: the leaf swings into a post.
+        profile.contact = ContactSet().scaled(pitch: 0.75, duration: 1.4, level: 1.2)
+        profile.contact.stop = ContactNoise(level: 0.7, frequency: 650, q: 0.7, duration: 0.011)
+        profile.space = .barn
+        profile.trim = 0.66
         return profile
     }()
 
@@ -257,6 +328,13 @@ extension SoundProfile {
         profile.room = 0.32
         profile.character.heavyBolt = true
         profile.knockTouch = KnockTouch(contact: 0.0018...0.0024, snapLevel: 0.05, snapPitch: 2, thump: 0.4)
+        // Massive oak on stone: a low, heavy contact; a big iron bolt; an iron ring for a stop.
+        profile.contact = ContactSet().scaled(pitch: 0.6, duration: 1.7, level: 1.2)
+        profile.contact.knock = ContactNoise(level: 0.06, frequency: 800, q: 0.7, duration: 0.005)
+        profile.contact.latch = ContactNoise(level: 0.35, frequency: 2_900, q: 1.1, duration: 0.004)
+        profile.contact.stop = ContactNoise(level: 1, frequency: 1_500, q: 1, duration: 0.007)
+        profile.space = .stoneHall
+        profile.trim = 0.41
         return profile
     }()
 
@@ -268,7 +346,9 @@ extension SoundProfile {
         profile.panel = [
             ModeSpec(390, 0.09, 0.5),
             ModeSpec(910, 0.08, 0.9),
+            ModeSpec(928, 0.075, 0.55),
             ModeSpec(1540, 0.07, 1.0),
+            ModeSpec(1566, 0.065, 0.6),
             ModeSpec(2320, 0.055, 0.7),
             ModeSpec(3350, 0.04, 0.45),
             ModeSpec(4700, 0.03, 0.3),
@@ -276,7 +356,9 @@ extension SoundProfile {
         profile.knock = [
             ModeSpec(420, 0.07, 0.55),
             ModeSpec(980, 0.06, 1.0),
+            ModeSpec(998, 0.056, 0.6),
             ModeSpec(1650, 0.05, 0.85),
+            ModeSpec(1677, 0.047, 0.5),
             ModeSpec(2480, 0.04, 0.55),
             ModeSpec(3600, 0.03, 0.35),
             ModeSpec(5100, 0.02, 0.2),
@@ -286,7 +368,9 @@ extension SoundProfile {
             ModeSpec(160, 0.06, 0.5),
             ModeSpec(380, 0.06, 0.9),
             ModeSpec(720, 0.05, 1.0),
+            ModeSpec(733, 0.047, 0.55),
             ModeSpec(1150, 0.04, 0.7),
+            ModeSpec(1171, 0.037, 0.4),
             ModeSpec(1800, 0.03, 0.45),
             ModeSpec(2700, 0.02, 0.3),
         ]
@@ -322,6 +406,13 @@ extension SoundProfile {
         profile.knockTouch = KnockTouch(contact: 0.0009...0.0013, snapLevel: 0.1, snapPitch: 2)
         profile.character.softClose = true
         profile.character.airlockHiss = 0.6
+        // Thin aluminum: bright, short ticks, and a damped end stop.
+        profile.contact.panel = ContactNoise(level: 0.2, frequency: 2_800, q: 1, duration: 0.003)
+        profile.contact.knock = ContactNoise(level: 0.14, frequency: 3_000, q: 1, duration: 0.0025)
+        profile.contact.frame = ContactNoise(level: 0.22, frequency: 1_900, q: 0.8, duration: 0.006)
+        profile.contact.stop = ContactNoise(level: 0.2, frequency: 900, q: 0.7, duration: 0.012)
+        profile.space = .airlock
+        profile.trim = 1.4
         return profile
     }()
 
@@ -332,7 +423,9 @@ extension SoundProfile {
         profile.panel = [
             ModeSpec(180, 0.16, 0.7),
             ModeSpec(420, 0.13, 1.0),
+            ModeSpec(428, 0.12, 0.6),
             ModeSpec(690, 0.11, 0.9),
+            ModeSpec(702, 0.10, 0.5),
             ModeSpec(1150, 0.08, 0.6),
             ModeSpec(1720, 0.05, 0.35),
             ModeSpec(2650, 0.035, 0.2),
@@ -340,7 +433,9 @@ extension SoundProfile {
         profile.knock = [
             ModeSpec(230, 0.12, 0.5),
             ModeSpec(520, 0.10, 0.9),
+            ModeSpec(530, 0.092, 0.55),
             ModeSpec(860, 0.08, 1.0),
+            ModeSpec(875, 0.074, 0.6),
             ModeSpec(1350, 0.06, 0.8),
             ModeSpec(2100, 0.045, 0.5),
             ModeSpec(3200, 0.03, 0.35),
@@ -348,7 +443,9 @@ extension SoundProfile {
         profile.frame = [
             ModeSpec(110, 0.14, 0.7),
             ModeSpec(240, 0.12, 1.0),
+            ModeSpec(245, 0.11, 0.6),
             ModeSpec(380, 0.10, 0.9),
+            ModeSpec(388, 0.092, 0.5),
             ModeSpec(620, 0.08, 0.6),
             ModeSpec(950, 0.05, 0.35),
             ModeSpec(1500, 0.035, 0.2),
@@ -385,16 +482,25 @@ extension SoundProfile {
         profile.bed.rollLevel = 0.022
         profile.room = 0.18
         profile.knockTouch = KnockTouch(contact: 0.0006...0.0009, snapLevel: 0.15, snapPitch: 2.2)
+        // Steel plate: a hard, bright clank, and a sprung steel stop.
+        profile.contact.panel = ContactNoise(level: 0.26, frequency: 2_300, q: 0.9, duration: 0.004)
+        profile.contact.knock = ContactNoise(level: 0.16, frequency: 2_600, q: 0.9, duration: 0.003)
+        profile.contact.frame = ContactNoise(level: 0.3, frequency: 1_400, q: 0.7, duration: 0.007)
+        profile.contact.stop = ContactNoise(level: 0.7, frequency: 1_900, q: 1, duration: 0.006)
+        profile.space = .stairwell
+        profile.trim = 0.57
         return profile
     }()
 
     /// Rushing air: broad, high resonances that turn noise into a hiss.
     nonisolated static let air: ModeSet = [
+        ModeSpec(1250, 0.0028, 0.3),
         ModeSpec(1800, 0.0025, 0.5),
         ModeSpec(2700, 0.0022, 0.8),
         ModeSpec(3800, 0.0020, 1.0),
         ModeSpec(5200, 0.0018, 0.9),
         ModeSpec(6800, 0.0015, 0.7),
         ModeSpec(8800, 0.0012, 0.5),
+        ModeSpec(11200, 0.0010, 0.3),
     ]
 }

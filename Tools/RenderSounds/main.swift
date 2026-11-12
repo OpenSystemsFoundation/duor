@@ -4,6 +4,7 @@
 //   make sounds                                   # writes build/sounds/*.wav, prints the tables
 //   build/render-sounds build/sounds --json after.json --baseline before.json   # with deltas
 //   build/render-sounds build/sounds --bench      # render cost only
+//   build/render-sounds build/sounds --events --no-wav   # the one-shot sounds only (quick, for tuning)
 //
 // Compiled together with Duor/Audio/DSP/*.swift (no app or AVFoundation code).
 
@@ -22,6 +23,8 @@ let jsonPath = option("--json")
 let baselinePath = option("--baseline")
 let benchOnly = arguments.contains("--bench")
 let writesFiles = !arguments.contains("--no-wav")
+/// Skip the swing gestures and their (slow) tonality analysis.
+let eventsOnly = arguments.contains("--events")
 
 // MARK: - Driving the synth
 //
@@ -244,10 +247,14 @@ func roomDecay(_ acoustics: RoomAcoustics) -> (t60: Float, energy: Float) {
 /// Event speeds in degrees per second, typical for each kind of close (see `DoorMotionInterpreter`).
 let gentleSpeed: Float = 50, firmSpeed: Float = 150, slamSpeed: Float = 320, hardSlamSpeed: Float = 600
 let openStopSpeed: Float = 120
+/// `DoorController.unlatchSpeed`.
+let unlatchSpeed: Float = 60
+/// Closing speeds for the how-hard sweep, with a pair either side of the firm (90) and slam (260) boundaries.
+let closeSpeeds: [Float] = [20, 40, 60, 89, 91, 120, 160, 200, 259, 261, 320, 450, 600]
 
 let events: [(String, Float, [Cue])] = [
     ("knock", 1.2, [knock(0.5, 0.5, at: 0.05)]),
-    ("unlatch", 1.2, [event(.unlatch, speed: 30, at: 0.05)]),
+    ("unlatch", 1.2, [event(.unlatch, speed: unlatchSpeed, at: 0.05)]),
     ("latch-gentle", 1.4, [event(.latch, speed: gentleSpeed, at: 0.05)]),
     ("latch-firm", 1.4, [event(.latch, speed: firmSpeed, at: 0.05)]),
     ("slam", 2.5, [event(.slam, speed: slamSpeed, at: 0.05)]),
@@ -268,7 +275,7 @@ let gestures: [(String, Gesture)] = [
 
 /// Knock, knock. Open slowly, hit the stop, swing it shut fast: slam.
 func sequence() -> [Cue] {
-    [knock(0.5, 0.5, at: 0.1, volume: 0.9), knock(0.5, 0.45, at: 0.36), event(.unlatch, speed: 30, at: 1.3)]
+    [knock(0.5, 0.5, at: 0.1, volume: 0.9), knock(0.5, 0.45, at: 0.36), event(.unlatch, speed: unlatchSpeed, at: 1.3)]
         + swing(move(3, 150, over: 1.2), from: 1.35)
         + [event(.openStop, speed: openStopSpeed, at: 2.56)]
         + swing(move(150, 3, over: 0.45), from: 3.4)
@@ -284,7 +291,7 @@ func runScenarios() throws {
                 try measure(
                     "\(prefix)\(door)-\(name)", seconds: seconds, cues: cues, profile: profile, speaker: speaker)
             }
-            for (name, gesture) in gestures {
+            for (name, gesture) in gestures where !eventsOnly {
                 try measure(
                     "\(prefix)\(door)-\(name)", seconds: gesture.duration + 1.2, cues: swing(gesture, from: 0.1),
                     profile: profile, speaker: speaker, continuous: true)
@@ -296,22 +303,32 @@ func runScenarios() throws {
     for (metal, tone) in metals {
         let profile = SoundProfile.oak.with(metal: tone)
         try measure("oak-\(metal)-latch-firm", seconds: 1.4, cues: events[3].2, profile: profile)
+        try measure("oak-\(metal)-unlatch", seconds: 1.2, cues: events[1].2, profile: profile)
+        try measure(
+            "castle-\(metal)-open-stop", seconds: 1.4, cues: events[5].2, profile: SoundProfile.castle.with(metal: tone)
+        )
+        if eventsOnly { continue }
         try measure(
             "oak-\(metal)-swing-slow", seconds: 4.2, cues: swing(move(5, 120, over: 3), from: 0.1), profile: profile,
             continuous: true)
     }
     // How hard: closing at increasing speed should get louder and brighter, without big jumps.
-    for speed: Float in [20, 40, 60, 89, 91, 120, 160, 200, 259, 261, 320, 450, 600] {
-        let sound: DoorSound = speed >= 260 ? .slam : .latch
-        try measure(
-            "oak-close-\(Int(speed))", seconds: 2.5, cues: [event(sound, speed: speed, at: 0.05)], profile: .oak)
+    for (door, profile) in doors {
+        for speed in closeSpeeds {
+            let sound: DoorSound = speed >= 260 ? .slam : .latch
+            for speaker in [false, true] {
+                try measure(
+                    "\(speaker ? "speaker-" : "")\(door)-close-\(Int(speed))", seconds: 2.5,
+                    cues: [event(sound, speed: speed, at: 0.05)], profile: profile, speaker: speaker)
+            }
+        }
     }
     try measure(
         "oak-slam-hard", seconds: 2.5, cues: [event(.slam, speed: hardSlamSpeed, at: 0.05)], profile: .oak)
     // The same gesture fed at different hinge update rates should sound about the same.
     for (name, rate, irregular) in [
         ("20hz", Float(20), false), ("60hz", 60, false), ("120hz", 120, false), ("irregular", 60, true),
-    ] {
+    ] where !eventsOnly {
         try measure(
             "oak-rate-\(name)", seconds: 2.4,
             cues: swing(move(5, 120, over: 1.2), from: 0.1, rate: rate, irregular: irregular),
@@ -349,23 +366,30 @@ let loudnessTargets: [String: (Float, String)] = [
 
 func report() {
     print("\n== Loudness on the phone measure (voiced), relative to the door's slam; target in brackets")
-    print(pad("door", 10), events.map { pad($0.0, 15) }.joined(), pad("swing-slow", 15), pad("swing-normal", 15))
-    for (door, _) in doors {
-        guard let slam = results["speaker-\(door)-slam"]?.onPhone else { continue }
+    print("   (a soft-close door cannot slam: its firm close is the reference, marked ref)")
+    print(pad("door", 10), events.map { pad($0.0, 17) }.joined(), pad("swing-slow", 17), pad("swing-normal", 17))
+    for (door, profile) in doors {
+        let reference = profile.character.softClose ? "latch-firm" : "slam"
+        guard let slam = results["speaker-\(door)-\(reference)"]?.onPhone else { continue }
         var row = pad(door, 10)
+        var loudest: Float = -.infinity, quietest: Float = .infinity
         for name in events.map(\.0) + ["swing-slow", "swing-normal"] {
             guard let level = results["speaker-\(door)-\(name)"]?.onPhone else { continue }
             let relative = level - slam
-            var mark = " "
-            if let (target, kind) = loudnessTargets[name] {
+            if !name.hasPrefix("swing") {
+                loudest = max(loudest, relative)
+                quietest = min(quietest, relative)
+            }
+            if name == reference {
+                row += pad(number(relative, 6) + " ref \(Int(slam.rounded()))", 17)
+            } else if let (target, kind) = loudnessTargets[name] {
                 let miss = kind == "≤" ? relative > target + 0.5 : abs(relative - target) > 3
-                mark = miss ? "!" : " "
-                row += pad(number(relative, 6) + " (\(Int(target)))\(mark)", 15)
+                row += pad(number(relative, 6) + " (\(Int(target)))\(miss ? "!" : " ")", 17)
             } else {
-                row += pad(number(relative, 6) + "  slam=\(Int(slam.rounded()))", 15)
+                row += pad(number(relative, 6), 17)
             }
         }
-        print(row)
+        print(row, " span", number(loudest - quietest, 5), loudest - quietest > 14 ? "!" : "")
     }
 
     print("\n== Peaks: worst output peak and level into the soft clipper (dBFS), per door, flat and voiced")
@@ -425,12 +449,32 @@ func report() {
         }
     }
 
-    print("\n== How hard: oak closes by speed (rms, centroid, phone)")
-    for speed in [20, 40, 60, 89, 91, 120, 160, 200, 259, 261, 320, 450, 600] {
-        guard let m = results["oak-close-\(speed)"] else { continue }
-        print(
-            pad("\(speed)°/s", 8), "rms", number(m.rms), "  centroid", number(m.centroid, 6, 0), "Hz  on phone",
-            number(m.onPhone))
+    print("\n== How hard: closes by speed, per door: on phone dB (voiced) / centroid Hz (flat)")
+    print("   (latch below 260°/s, slam above; one take each, and takes differ by a few percent:")
+    print("    ! marks a step down in loudness, or of more than 8 % in brightness)")
+    print(pad("°/s", 10), closeSpeeds.map { pad(String(Int($0)), 12) }.joined())
+    for (door, _) in doors {
+        var row = pad(door, 10)
+        var last: (Float, Float) = (-200, 0)
+        for speed in closeSpeeds {
+            guard let flat = results["\(door)-close-\(Int(speed))"],
+                let voiced = results["speaker-\(door)-close-\(Int(speed))"]
+            else { continue }
+            let down = voiced.onPhone < last.0 - 0.2 || flat.centroid < last.1 * 0.92
+            row += pad(number(voiced.onPhone, 5) + "/" + number(flat.centroid, 4, 0) + (down ? "!" : ""), 12)
+            last = (voiced.onPhone, flat.centroid)
+        }
+        print(row)
+    }
+
+    print("\n== Hardware: firm latch and unlatch on oak, open stop on castle, per metal (rms, centroid, ring)")
+    for (metal, _) in metals {
+        var row = pad(metal, 8)
+        for name in ["oak-\(metal)-latch-firm", "oak-\(metal)-unlatch", "castle-\(metal)-open-stop"] {
+            guard let m = results[name] else { continue }
+            row += "  " + number(m.rms, 6) + " dB" + number(m.centroid, 6, 0) + " Hz" + number(m.ring, 5, 2) + " s  |"
+        }
+        print(row)
     }
 
     print("\n== Decay (T60 estimate from the Schroeder curve) of the slam, flat")

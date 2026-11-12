@@ -19,6 +19,12 @@ nonisolated struct Biquad: Sendable {
     private var z2: Float = 0
 
     init(_ kind: Kind, frequency: Float, q: Float, gainDB: Float = 0, sampleRate: Float) {
+        retune(kind, frequency: frequency, q: q, gainDB: gainDB, sampleRate: sampleRate)
+    }
+
+    /// Changes the filter while it runs, keeping what it holds: for a band that glides. In small
+    /// steps (a few percent at a time) this is smooth.
+    mutating func retune(_ kind: Kind, frequency: Float, q: Float, gainDB: Float = 0, sampleRate: Float) {
         let omega = 2 * Float.pi * min(frequency, sampleRate * 0.45) / sampleRate
         let cosine = cosf(omega)
         let alpha = sinf(omega) / (2 * q)

@@ -128,6 +128,7 @@
         { "path": "SwingSoundTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "CreakTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "ImpactAndRoomTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
+        { "path": "RecipeTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "OutputFaderTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "CatStoryTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "KnockTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },

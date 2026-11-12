@@ -11,8 +11,9 @@ nonisolated enum DoorSound: String, CaseIterable, Sendable {
 }
 
 /// How hard a door event is, from the speed it happened at: the one number that sets how a hit
-/// sounds. Continuous across the gentle, firm and slam boundaries, so repeated closes never sound
-/// stepped.
+/// sounds. Loudness (`force`), brightness and contact time (`hardness`) and timing (`boltDelay`)
+/// all come from it, and all are continuous across the gentle, firm and slam boundaries, so
+/// repeated closes never sound stepped.
 nonisolated struct DoorStrength: Sendable {
     /// Speed (degrees per second) of a typical firm close: what `play(_:)` uses by default.
     static let nominalSpeed: Float = 150
@@ -21,6 +22,9 @@ nonisolated struct DoorStrength: Sendable {
     /// The speed range the hardness spans, gentlest to hardest.
     static let softest: Float = 15
     static let hardest: Float = 700
+    /// Where a close turns into a slam (`DoorMotionInterpreter.Configuration.slamSpeed`): `force`
+    /// is 1 here.
+    static let slamSpeed: Float = 260
 
     var speed: Float
 
@@ -30,16 +34,42 @@ nonisolated struct DoorStrength: Sendable {
         return min(max(x, 0), 1)
     }
 
-    /// Loudness of a latch: a door eased shut is quiet, a firm close full (the 1.0 values were 0.6
-    /// and 1 with nothing in between).
-    var latchVolume: Float { Self.ramp(speed, from: 20, to: 260, 0.4, 1) }
-    /// A slam at the threshold, and harder above it.
-    var slamVolume: Float { Self.ramp(speed, from: 260, to: 700, 0.9, 1) }
-    var openStopVolume: Float { Self.ramp(speed, from: 0, to: 200, 0, 1) }
+    /// How loud the hit is (amplitude), 1 at the slam threshold. Below it loudness follows speed
+    /// closely: an eased close is about 12 dB under a slam, a firm one 6. Above it the hit itself
+    /// only grows a little, because a door can't hit much harder than hard; a harder slam is more
+    /// in what follows it (see `overSlam`).
+    var force: Float {
+        let relative = min(max(speed, Self.softest), Self.hardest) / Self.slamSpeed
+        return powf(relative, relative < 1 ? Self.forceExponent : 0.1)
+    }
+    static let forceExponent: Float = 0.16
 
-    private static func ramp(_ speed: Float, from low: Float, to high: Float, _ start: Float, _ end: Float) -> Float {
-        let t = min(max((speed - low) / (high - low), 0), 1)
-        return start + (end - start) * t
+    /// How much of a slam this close is, 0 (a latch) ... 1 (a full slam). It comes in over a
+    /// stretch of speed around the threshold instead of at it: the frame is hit heavier, the leaf
+    /// bounces back, the hardware starts to rattle.
+    var slamWeight: Float { Self.smoothstep((speed - 190) / 170) }
+
+    /// How far past a plain slam, 0 ... 1: more rebound and a longer rattle.
+    var overSlam: Float { Self.smoothstep((speed - 340) / 360) }
+
+    /// Seconds between the leaf meeting its stop and the bolt snapping home: the bolt rides up the
+    /// strike plate in that time, so it is long when the door is eased shut and short when it is
+    /// thrown.
+    var boltDelay: Float {
+        let ease = 1 - hardness
+        return 0.009 + 0.08 * ease * ease
+    }
+
+    /// The same event with a damper in the way (a soft-close door): above a firm close the extra
+    /// speed is mostly taken out.
+    var damped: DoorStrength {
+        let knee: Float = 150
+        return DoorStrength(speed: speed <= knee ? speed : knee * powf(speed / knee, 0.15))
+    }
+
+    private static func smoothstep(_ value: Float) -> Float {
+        let t = min(max(value, 0), 1)
+        return t * t * (3 - 2 * t)
     }
 }
 
@@ -164,6 +194,12 @@ nonisolated extension DoorSynth {
     /// The soft clipper after the limiter is a safety net: with the limiter holding the mix at 1
     /// it never gets past tanh(1), which this brings up to just under full scale.
     static let outputGain: Float = 0.98 / 0.761_594_2
+    /// How hard a full slam overloads the ring of the frame and leaf (see `ImpactSpec.drive`): the
+    /// weight of a slam without the peak.
+    static let slamDrive: Float = 0.7
+    /// The hit of a slam comes this long after the event, behind the swell of air pushed ahead of
+    /// the leaf. Short: long enough to hear the air, not long enough for the hit to feel late.
+    static let slamLead: Float = 0.036
 }
 
 /// Audio-thread state. Only touched inside `DoorSynth.render(into:)`.
@@ -282,10 +318,10 @@ private nonisolated struct SynthCore: Sendable {
             let strength = DoorStrength(speed: speed)
             switch sound {
             case .knock: knock(at: .center, 1)
-            case .unlatch: unlatch(1)
-            case .latch: latch(strength.latchVolume, hardness: strength.hardness)
-            case .slam: slam(strength.slamVolume, hardness: strength.hardness)
-            case .openStop: openStop(strength.openStopVolume, hardness: strength.hardness)
+            case .unlatch: unlatch()
+            case .latch: close(strength, slam: false)
+            case .slam: close(strength, slam: true)
+            case .openStop: openStop(strength)
             }
         }
     }
@@ -305,6 +341,7 @@ private nonisolated struct SynthCore: Sendable {
     /// part of why they sounded so solid. The mix is clean now, so the knock gets a milder version
     /// of that for itself: its first peaks are rounded by about 3 dB, nothing else is touched.
     private mutating func knock(at target: KnockSpot, _ volume: Float) {
+        let volume = volume * profile.levels.knock
         let spot = target.nudged(by: &random)
         var modes = spot.excite(profile.knock)
         for index in modes.indices {
@@ -346,127 +383,316 @@ private nonisolated struct SynthCore: Sendable {
         clatterBoards(profile.character.looseBoards * 0.4 * volume, after: 0.006, count: 2, hardness: 0.5)
     }
 
-    /// Handle turns, bolt slides out of the strike plate.
-    private mutating func unlatch(_ volume: Float) {
-        hiss(profile.character.airlockHiss * volume, after: 0.03, duration: 0.5)
-        if profile.character.heavyBolt {
+    /// Handle and spindle turn (two soft spring ticks), the bolt draws back out of the strike
+    /// plate (a short scrape and a click), and the leaf lets go of its stop: low and quiet.
+    /// The handle turns at the same pace however the door then swings, so this has no speed.
+    private mutating func unlatch() {
+        let volume = profile.levels.unlatch
+        let character = profile.character
+        hiss(character.airlockHiss * volume, after: 0.03, duration: 0.5)
+        let released: Float
+        if character.heavyBolt {
             // A big iron bolt dragged back: a low clank, a scrape, a second clank.
+            released = random.value(in: 0.07...0.09)
             strike(
                 ImpactSpec(
                     modes: profile.latch, contactTime: 0.0006, amplitude: 0.5 * volume, pitchScale: 0.5, decayScale: 3,
                     contact: profile.contact.latch))
             strike(
                 ImpactSpec(
-                    modes: profile.hinge, contactTime: 0.03, amplitude: 0.12 * volume, roughness: 1, delay: 0.02,
-                    pitchScale: 0.9, decayScale: 0.5))
+                    modes: profile.hinge, contactTime: 0, amplitude: 0.3 * volume, delay: 0.012, pitchScale: 0.9,
+                    decayScale: 0.5,
+                    contact: ContactNoise(
+                        level: 0.05, frequency: profile.contact.latch.frequency * 0.5, q: 1.4,
+                        duration: released - 0.012, swell: 0.6, glide: 0.7, ring: 0.5)))
             strike(
                 ImpactSpec(
-                    modes: profile.latch, contactTime: 0.0005, amplitude: 0.4 * volume,
-                    delay: random.value(in: 0.07...0.09), pitchScale: 0.45, decayScale: 3,
-                    contact: profile.contact.latch))
-            return
+                    modes: profile.latch, contactTime: 0.0005, amplitude: 0.4 * volume, delay: released,
+                    pitchScale: 0.45, decayScale: 3, contact: profile.contact.latch))
+        } else {
+            // Two soft ticks of the handle's spring and spindle taking up their play.
+            let second = random.value(in: 0.02...0.03)
+            released = second + random.value(in: 0.028...0.04)
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0.0007, amplitude: 0.1 * volume, roughness: 0.5,
+                    pitchScale: 0.78, decayScale: 0.5, reverbSend: 0.6,
+                    contact: profile.contact.latch.scaled(level: 0.5), hardness: 0.25))
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0.0006, amplitude: 0.13 * volume, roughness: 0.5,
+                    delay: second, pitchScale: 0.88, decayScale: 0.5, reverbSend: 0.6,
+                    contact: profile.contact.latch.scaled(level: 0.5), hardness: 0.3))
+            // The bolt sliding back against its spring, which lets up as it goes: a falling scrape.
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0, amplitude: 0.22 * volume, delay: second, decayScale: 0.5,
+                    reverbSend: 0.6,
+                    contact: ContactNoise(
+                        level: 0.04, frequency: profile.contact.latch.frequency * 0.7, q: 1.6,
+                        duration: released - second, swell: 0.8, glide: 0.6, ring: 0.45)))
+            // Clear of the plate.
+            strike(
+                ImpactSpec(
+                    modes: profile.latch, contactTime: 0.0003, amplitude: 0.34 * volume, delay: released,
+                    contact: profile.contact.latch, hardness: 0.45))
         }
+        // The leaf comes off its stop: the frame gives a little, low and quiet.
+        let free = released + random.value(in: 0.02...0.03)
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.0002, amplitude: 0.35 * volume, contact: profile.contact.latch))
+                modes: profile.frame, contactTime: 0.009, amplitude: 0.2 * volume, roughness: 0.1, delay: free,
+                decayScale: 0.8, contact: profile.contact.frame.scaled(level: 0.5), hardness: 0.15))
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.0003, amplitude: 0.25 * volume,
-                delay: random.value(in: 0.018...0.03), pitchScale: 0.85, contact: profile.contact.latch))
-        strike(
-            ImpactSpec(
-                modes: profile.panel, contactTime: 0.002, amplitude: 0.15 * volume, contact: profile.contact.panel))
-        rattleGlass(profile.character.glassRattle * 0.12 * volume, after: 0.01, hardness: 0.5)
+                modes: profile.panel, contactTime: 0.004, amplitude: 0.12 * volume, delay: free,
+                contact: profile.contact.panel.scaled(level: 0.5), hardness: 0.25))
+        rattleGlass(character.glassRattle * 0.12 * volume, after: free + 0.01, hardness: 0.5)
     }
 
-    /// Door meets the frame, bolt rides the strike plate, then snaps into place.
-    private mutating func latch(_ volume: Float, hardness: Float) {
-        if profile.character.softClose {
-            hiss(profile.character.airlockHiss * 0.8 * volume, after: 0.04, duration: 0.35)
-            // The damper takes the speed out; a magnet catches the door.
-            // (So the hit itself is softer than the speed says.)
-            strike(
-                ImpactSpec(
-                    modes: profile.frame, contactTime: 0.014, amplitude: 0.5 * volume, roughness: 0.05,
-                    contact: profile.contact.frame, hardness: hardness * 0.6))
-            strike(
-                ImpactSpec(
-                    modes: profile.latch, contactTime: 0.00015, amplitude: 0.35 * volume, delay: 0.02,
-                    pitchScale: 1.35, decayScale: 0.5, contact: profile.contact.latch, hardness: hardness))
+    /// A door closing, from eased shut to slammed.
+    ///
+    /// The leaf meets its stop; the bolt touches the strike plate and rides up it (a short rising
+    /// scrape) until it snaps home (the click); the leaf touches the stop a second time as it
+    /// settles. How long the bolt takes shrinks as the door comes in faster. Eased shut there is
+    /// more scrape and a soft click; a firm close is tight and bright.
+    ///
+    /// A slam is the same close and more: air pushed ahead of the leaf (a short swell of noise
+    /// before the hit), the frame hit heavily with a strong crack, the leaf bouncing back off it,
+    /// and the hardware rattling down. That comes in gradually around the slam threshold
+    /// (`DoorStrength.slamWeight`) and keeps growing above it, so a close just under the threshold
+    /// and one just over it sound nearly alike, and a hard slam is more than a slam.
+    private mutating func close(_ strength: DoorStrength, slam: Bool) {
+        let character = profile.character
+        if character.softClose {
+            softClose(strength.damped)
             return
         }
+        let hardness = strength.hardness
+        let force = strength.force
+        let over = slam ? strength.overSlam : 0
+        // The recipe follows the speed, not the name: what is called a slam is at least a little
+        // of one, and what is not is at most half.
+        let weight = slam ? max(strength.slamWeight, 0.2) : min(strength.slamWeight, 0.5)
+
+        var start: Float = 0
+        if slam {
+            // Air squeezed out of the doorway ahead of the leaf: a swell in the low middle that
+            // rises into the hit. Short, because the hit waits for it.
+            start = DoorSynth.slamLead * (1 - 0.3 * over)
+            let air = profile.bed.airFrequency
+            strike(
+                .noise(
+                    ContactNoise(level: 0.2, frequency: air * 0.5, q: 0.8, duration: start, swell: 1, glide: 2.4),
+                    amplitude: 1.2 * weight * weight * force, reverbSend: 0.7))
+        }
+
+        // The leaf meets its stop. A slam lands heavier and longer on the frame, with more crack.
+        // Its peak hardly grows: from a firm close up the ring is driven into a soft overload
+        // instead (see `ImpactSpec.drive`), and far above the threshold the blow itself even
+        // eases off a little, because a door can't hit much harder than hard. What grows is the
+        // crack, how long the leaf rings, how much of it the room gives back, and what follows.
+        // The bright part comes in first and the heavy part after, so a close never gets duller
+        // as it gets harder.
+        let bright = weight.squareRoot()
+        let heavy = weight * weight
+        let crack = 1 + 1.2 * bright
+        let roomful = 1 + 0.6 * heavy
+        let drive = DoorSynth.slamDrive * (min(max((hardness - 0.55) / 0.25, 0), 1) + over)
+        let blow = force * (1 - 0.3 * over)
         strike(
             ImpactSpec(
-                modes: profile.frame, contactTime: 0.004, amplitude: 0.55 * volume,
-                contact: profile.contact.frame, hardness: hardness))
+                modes: profile.frame, contactTime: 0.004, amplitude: (0.55 + 0.05 * weight) * blow,
+                roughness: 0.3 + 0.2 * weight, delay: start, decayScale: 1 + 0.2 * heavy, reverbSend: roomful,
+                contact: profile.contact.frame.scaled(level: crack), hardness: hardness, drive: drive))
         strike(
             ImpactSpec(
-                modes: profile.panel, contactTime: 0.003, amplitude: 0.35 * volume, contact: profile.contact.panel,
+                modes: profile.panel, contactTime: 0.003, amplitude: (0.35 + 0.1 * weight) * blow,
+                delay: start + 0.0015 * weight, detune: 0.03 + 0.02 * weight, decayScale: 1 + 0.5 * heavy,
+                reverbSend: roomful, contact: profile.contact.panel.scaled(level: crack), hardness: hardness,
+                drive: drive))
+
+        // The bolt: touches the strike plate, rides up it, snaps home. A heavy iron bolt is lower
+        // and slower.
+        let heavyBolt = character.heavyBolt
+        let boltPitch: Float = heavyBolt ? 0.5 : 1
+        let boltDecay: Float = heavyBolt ? 3 : 1
+        let home = start + strength.boltDelay * (heavyBolt ? 2 : 1)
+        strike(
+            ImpactSpec(
+                modes: profile.latch, contactTime: 0.00025, amplitude: (0.1 + 0.15 * hardness) * force, delay: start,
+                pitchScale: boltPitch, decayScale: boltDecay * 0.6, contact: profile.contact.latch,
                 hardness: hardness))
-        let boltPitch: Float = profile.character.heavyBolt ? 0.5 : 1
-        let boltDecay: Float = profile.character.heavyBolt ? 3 : 1
+        // More of the scrape when the door is eased shut: the bolt takes its time. A slow bolt
+        // scrapes low and dull; a quick one zips, and rings the plate.
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.00025, amplitude: 0.3 * volume, pitchScale: boltPitch,
-                decayScale: boltDecay, contact: profile.contact.latch, hardness: hardness))
+                modes: profile.latch, contactTime: 0,
+                amplitude: 1.8 * (1 - hardness).squareRoot() * (1 - hardness) * (0.3 + hardness) * force,
+                delay: start,
+                pitchScale: boltPitch, decayScale: boltDecay * 0.5, reverbSend: 0.6,
+                contact: ContactNoise(
+                    level: 0.1, frequency: profile.contact.latch.frequency * (0.14 + 0.42 * hardness), q: 1.6,
+                    duration: home - start, swell: 1, glide: 2.2, ring: 0.05 + 0.15 * hardness)))
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.0002, amplitude: 0.5 * volume,
-                delay: random.value(in: 0.028...0.045) * (profile.character.heavyBolt ? 2 : 1),
+                modes: profile.latch, contactTime: 0.0002, amplitude: (0.3 + 0.45 * hardness - 0.15 * weight) * blow,
+                delay: home,
                 pitchScale: 1.08 * boltPitch, decayScale: boltDecay, contact: profile.contact.latch,
                 hardness: hardness))
-        rattleGlass(profile.character.glassRattle * 0.4 * volume, after: 0.006, hardness: hardness)
-        clatterBoards(profile.character.looseBoards * 0.35 * volume, after: 0.01, count: 2, hardness: hardness)
-    }
 
-    /// Heavy hit into the frame, the latch, then the hinges rattling down.
-    private mutating func slam(_ volume: Float, hardness: Float) {
-        if profile.character.softClose {
-            // A soft-close door can't slam: it just closes a little firmer.
-            latch(min(volume, 1), hardness: hardness)
-            return
-        }
+        // The second touch: a latched leaf settling against its stop, a slammed one bouncing
+        // back off the frame.
+        let again =
+            slam
+            ? start + random.value(in: 0.07...0.11)
+            : home + random.value(in: 0.045...0.075) * (heavyBolt ? 1.3 : 1)
+        let touch = (0.13 + 0.25 * weight) * force
+        let softer = max(hardness - 0.3, 0)
         strike(
             ImpactSpec(
-                modes: profile.frame, contactTime: 0.006, amplitude: volume,
-                roughness: 0.5, decayScale: 1.4, contact: profile.contact.frame, hardness: hardness))
+                modes: profile.frame, contactTime: 0.006, amplitude: touch, roughness: 0.2, delay: again,
+                decayScale: 0.8 + 0.3 * weight, contact: profile.contact.frame, hardness: softer))
         strike(
             ImpactSpec(
-                modes: profile.panel, contactTime: 0.004, amplitude: 0.7 * volume,
-                detune: 0.05, decayScale: 1.3, contact: profile.contact.panel, hardness: hardness))
-        let heavy = profile.character.heavyBolt
+                modes: profile.panel, contactTime: 0.004, amplitude: touch * 0.6, delay: again,
+                contact: profile.contact.panel, hardness: softer))
+        // The bolt knocks in its keep as the leaf comes back.
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.0002, amplitude: 0.45 * volume, delay: 0.008,
-                pitchScale: heavy ? 0.5 : 1, decayScale: heavy ? 3 : 1, contact: profile.contact.latch,
-                hardness: hardness))
-        var time: Float = 0.03
-        var level: Float = 0.25
-        for _ in 0..<4 {
+                modes: profile.latch, contactTime: 0.0003, amplitude: (0.07 + 0.1 * weight) * force,
+                delay: again + 0.003, pitchScale: 0.95 * boltPitch, decayScale: boltDecay * 0.5,
+                contact: profile.contact.latch, hardness: softer))
+        if over > 0.05 {
+            // Thrown hard enough to come back twice.
             strike(
                 ImpactSpec(
-                    modes: profile.hinge, contactTime: 0.0004, amplitude: level * volume,
-                    delay: time, pitchScale: random.value(in: 0.95...1.05), contact: profile.contact.hinge,
-                    hardness: hardness))
-            time += random.value(in: 0.02...0.045)
-            level *= 0.6
+                    modes: profile.frame, contactTime: 0.007, amplitude: 0.3 * over * force, roughness: 0.2,
+                    delay: again + random.value(in: 0.055...0.085), decayScale: 0.8,
+                    contact: profile.contact.frame, hardness: max(softer - 0.2, 0)))
         }
-        rattleGlass(profile.character.glassRattle * volume, after: 0.01, hardness: hardness)
-        clatterBoards(profile.character.looseBoards * volume, after: 0.015, count: 5, hardness: hardness)
+
+        // The hardware rattling down: hinge knuckles on their pins, longer after a harder slam.
+        if weight > 0.05 {
+            var time = start + 0.03
+            var level = 0.45 * bright * force
+            for _ in 0..<(4 + Int(2 * over + 0.5)) {
+                strike(
+                    ImpactSpec(
+                        modes: profile.hinge, contactTime: 0.0004, amplitude: level, delay: time,
+                        pitchScale: random.value(in: 0.95...1.05), contact: profile.contact.hinge,
+                        hardness: hardness))
+                time += random.value(in: 0.02...0.045) * (1 + 0.4 * over)
+                level *= 0.6 + 0.1 * over
+            }
+        }
+        // (The panes are shaken by the whole leaf, so they don't ease off as much as the blow.)
+        rattleGlass(
+            character.glassRattle * (0.4 + 0.6 * weight) * force * (1 - 0.12 * over), after: start + 0.006,
+            hardness: hardness)
+        clatterBoards(
+            character.looseBoards * (0.35 + 0.65 * weight) * blow, after: start + 0.01,
+            count: 2 + Int(3 * weight + 0.5), hardness: hardness)
     }
 
-    /// Door swings into a rubber stop: dull thud and a small hinge tick.
-    private mutating func openStop(_ volume: Float, hardness: Float) {
+    /// A soft-close door can't slam: the damper takes the speed out, a seal hisses, and a magnet
+    /// catches the leaf. (`strength` is what is left after the damper.)
+    private mutating func softClose(_ strength: DoorStrength) {
+        let hardness = strength.hardness
+        // Under the damper loudness follows what speed is left more closely than on a free door:
+        // eased shut, the hatch hardly lands.
+        let force = powf(max(strength.speed, DoorStrength.softest) / 150, 1.2) * profile.levels.softClose
+        // The seal takes up, air let out as it is squeezed: most of what is heard of a soft close.
+        strike(
+            .noise(
+                ContactNoise(level: 0.36, frequency: 2_200, q: 1.2, duration: 0.45, glide: 0.6),
+                amplitude: profile.character.airlockHiss * force, delay: 0.01, reverbSend: 0.5, hardness: hardness))
+        // So the hit itself is softer than the speed says: a padded thud, and the skin ringing.
         strike(
             ImpactSpec(
-                modes: profile.panel, contactTime: 0.008, amplitude: 1.6 * volume, roughness: 0.1, decayScale: 0.8,
-                contact: profile.contact.stop, hardness: hardness))
+                modes: profile.frame, contactTime: 0.012, amplitude: 0.4 * force, roughness: 0.05,
+                contact: profile.contact.frame, hardness: hardness * 0.6, drive: 1))
         strike(
             ImpactSpec(
-                modes: profile.hinge, contactTime: 0.0005, amplitude: 0.12 * volume, delay: 0.035,
+                modes: profile.panel, contactTime: 0.005, amplitude: 0.55 * force, roughness: 0.05,
+                decayScale: 1.3, contact: profile.contact.panel, hardness: hardness * 0.6, drive: 0.8))
+        // The catch pulls the leaf the last of the way: a clean click, sooner when it came in fast.
+        let home = strength.boltDelay * 0.8
+        strike(
+            ImpactSpec(
+                modes: profile.latch, contactTime: 0.00015, amplitude: 0.22 * force, delay: home,
+                pitchScale: 1.35, decayScale: 0.5, contact: profile.contact.latch, hardness: hardness))
+        // And the damper pushes back once.
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0.014, amplitude: 0.12 * force, roughness: 0.05,
+                delay: home + random.value(in: 0.05...0.07), decayScale: 0.8, hardness: hardness * 0.4))
+    }
+
+    /// The open leaf runs into its door stop, each door's own (`DoorStop`): the stop sounds, the
+    /// leaf takes the blow, a loose stop chatters, and the leaf shudders on its hinges after.
+    private mutating func openStop(_ strength: DoorStrength) {
+        let stop = profile.stop
+        let hardness = strength.hardness
+        // As loud at a normal opening speed as a close at the same speed, levelling off sooner:
+        // a leaf swung open has less behind it than one pulled shut.
+        let force = powf(min(max(strength.speed, DoorStrength.softest), 400) / 120, 0.6) * profile.levels.stop
+
+        strike(
+            ImpactSpec(
+                modes: stop.modes, contactTime: stop.contactTime, amplitude: stop.level * force, roughness: 0.15,
+                reverbSend: 0.8, contact: profile.contact.stop, hardness: hardness))
+        strike(
+            ImpactSpec(
+                modes: profile.panel, contactTime: max(stop.contactTime, 0.003), amplitude: stop.leaf * force,
+                roughness: 0.1, decayScale: 0.8, contact: profile.contact.panel.scaled(level: 0.5),
+                hardness: hardness * 0.8))
+
+        // A stop that is loose (a ring, a spring) bounces: quicker and quieter each time.
+        var time = stop.bounceGap * random.value(in: 0.9...1.1)
+        var gap = time
+        var level = stop.level * 0.5 * force
+        for _ in 0..<min(max(stop.bounces, 0), 4) {
+            strike(
+                ImpactSpec(
+                    modes: stop.modes, contactTime: stop.contactTime * 0.7, amplitude: level, delay: time,
+                    pitchScale: random.value(in: 0.97...1.03), reverbSend: 0.8,
+                    contact: profile.contact.stop.scaled(level: 0.6), hardness: max(hardness - 0.2, 0)))
+            gap *= 0.62
+            time += gap
+            level *= 0.55
+        }
+
+        // The shudder: the leaf swings back a hair and settles, heard in the frame through the
+        // hinges, and a hinge knuckle ticks.
+        let wobble = random.value(in: 0.05...0.07)
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0.012, amplitude: stop.shudder * force, roughness: 0.1,
+                delay: wobble, decayScale: 0.7, hardness: 0.2))
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0.014, amplitude: stop.shudder * 0.5 * force, roughness: 0.1,
+                delay: wobble * 2.1, decayScale: 0.6, hardness: 0.1))
+        strike(
+            ImpactSpec(
+                modes: profile.hinge, contactTime: 0.0005, amplitude: 0.1 * force, delay: 0.035,
                 contact: profile.contact.hinge, hardness: hardness))
-        rattleGlass(profile.character.glassRattle * 0.3 * volume, after: 0.01, hardness: hardness)
-        clatterBoards(profile.character.looseBoards * 0.3 * volume, after: 0.012, count: 2, hardness: hardness)
+
+        if stop.windDown > 0 {
+            // The actuator has nowhere left to go: its whine falls away as the motor runs down.
+            let level = stop.windDown * force
+            strike(
+                .noise(
+                    ContactNoise(level: 0.5, frequency: 640, q: 10, duration: 0.42, glide: 0.3),
+                    amplitude: level, delay: 0.01, reverbSend: 0.6))
+            strike(
+                .noise(
+                    ContactNoise(level: 0.22, frequency: 1_280, q: 10, duration: 0.3, glide: 0.3),
+                    amplitude: level, delay: 0.01, reverbSend: 0.6))
+        }
+        rattleGlass(profile.character.glassRattle * 0.3 * force, after: 0.01, hardness: hardness)
+        clatterBoards(profile.character.looseBoards * 0.3 * force, after: 0.012, count: 2, hardness: hardness)
     }
 
     /// A pneumatic "pssshh": noise through broad high resonances, swelling and fading.

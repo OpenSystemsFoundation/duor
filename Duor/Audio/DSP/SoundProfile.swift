@@ -344,29 +344,55 @@ extension SoundProfile {
         return profile
     }
 
-    /// Solid oak with a friendly fist knock: a soft, warm "thump-thump". Long, padded contact,
-    /// heavily damped, a little frame thud, no snap.
+    /// An ordinary house door of solid oak, well fitted in its frame: a tidy, compact "thock" and a
+    /// clean click, gone in a moment. Knocked with a friendly fist: a soft, warm "tok-tok" with a
+    /// long, padded contact, heavily damped, no snap, and no boom from the frame under it.
+    ///
+    /// Next to the reference wood the leaf and frame sit a little higher and are damped more (a
+    /// 40 mm leaf held by its seals all round loses its ring quickly), and the lowest frame mode
+    /// is held back: a long boom under 100 Hz is what a barn door does.
     nonisolated static let oak: SoundProfile = {
         var profile = SoundProfile.oakWood
-        profile.knock = oakWood.knock.scaled(pitch: 0.95, decay: 0.7, gain: 1.4)
-        profile.knockTouch = KnockTouch(contact: 0.0019...0.0025, snapLevel: 0, snapPitch: 1, thump: 0.12)
+        profile.panel = oakWood.panel.scaled(pitch: 1.08, decay: 0.72)
+        profile.frame = oakWood.frame.scaled(pitch: 1.1, decay: 0.65)
+        profile.frame[0].gain = 0.42
+        // A snug latch and tight hinges: a shorter click, and little rattle after a slam.
+        profile.latch = oakWood.latch.scaled(pitch: 1, decay: 0.8)
+        profile.hinge = oakWood.hinge.scaled(pitch: 1, decay: 0.7, gain: 0.75)
+        profile.knock = oakWood.knock.scaled(pitch: 1.08, decay: 0.62, gain: 1.4)
+        // The top of the knock is also the crack of the leaf's edge in a slam: kept soft.
+        for index in 5..<8 { profile.knock[index].gain *= 0.5 }
+        profile.knock[0].gain *= 0.6
+        profile.knockTouch = KnockTouch(contact: 0.0017...0.0022, snapLevel: 0, snapPitch: 1, thump: 0)
         // A fist is padded: hardly any crack.
         profile.contact.knock = ContactNoise(level: 0.07, frequency: 1_100, q: 0.7, duration: 0.004)
         // The oak door's trim came down to make room for its slam; its swing sound stays where it was.
-        profile.creak.level = 0.04
-        profile.bed.airLevel = 0.036
-        profile.bed.rollLevel = 0.023
+        // Oiled hinges that still talk a little: a lighter creak than the reference, with two
+        // mild spots.
+        profile.creak.level = 0.033
+        profile.bed.airLevel = 0.033
+        profile.bed.rollLevel = 0.028
+        profile.room = 0.09
         profile.space = .hallway
-        profile.levels = EventLevels(knock: 1.1, unlatch: 1.5, stop: 1.45)
-        profile.trim = 0.78
+        profile.levels = EventLevels(knock: 0.95, unlatch: 1.4, stop: 1.3, slam: 1.1)
+        profile.trim = 0.81
         return profile
     }()
 
-    /// A light painted pine door: higher, a little hollower, a lighter creak.
+    /// A light painted pine door inside a cottage: the quiet one. Higher and a little hollower than
+    /// oak, with less weight behind every sound, a short ring, a small dry room and a lighter
+    /// creak. It is set a few dB under the other doors on purpose (`trim`).
     nonisolated static let pine: SoundProfile = {
         var profile = SoundProfile.oakWood
-        profile.panel = oakWood.panel.scaled(pitch: 1.2, decay: 1.15)
-        profile.frame = oakWood.frame.scaled(pitch: 1.12, decay: 0.9)
+        profile.panel = oakWood.panel.scaled(pitch: 1.3, decay: 0.7, gain: 1.25)
+        profile.frame = oakWood.frame.scaled(pitch: 1.3, decay: 0.7)
+        // A light leaf has little to shake its frame with: the lowest modes hardly sound, and
+        // what is left is the boxy middle of a thin door.
+        profile.frame[0].gain = 0.2
+        profile.frame[1].gain = 0.6
+        // A small brass-sized latch in soft wood: a gentler click.
+        profile.latch = oakWood.latch.scaled(pitch: 1, decay: 0.85, gain: 0.65)
+        profile.hinge = oakWood.hinge.scaled(pitch: 1.1, decay: 0.7, gain: 0.6)
         profile.creak.formants = [
             ModeSpec(1489, 0.0050, 0.46),
             ModeSpec(1918, 0.0040, 0.47),
@@ -384,33 +410,40 @@ extension SoundProfile {
         // (Its rasp keeps a little more top than the other wood doors': with less, its fine slips
         // start to read as a tone.)
         profile.creak.raspFrequency = 2_400
-        profile.creak.level = 0.07
+        profile.creak.level = 0.082
         // One light spot.
         profile.creak.friction = FrictionMap(
             recipe: .init(count: 1, width: 5...8, strength: 0.3...0.45, floor: 0.08), seed: 0xC07)
         profile.bed.airFrequency = 750
-        profile.bed.airLevel = 0.025
-        profile.room = 0.1
-        profile.character.glassRattle = 0.4
+        profile.bed.airLevel = 0.029
+        profile.bed.rollLevel = 0.034
+        profile.room = 0.07
+        // The panes are small and sit well in their putty: a faint tinkle, not a rattle.
+        profile.character.glassRattle = 0.22
         // A crisp knuckle knock: the reference wood's knock with its sharp snap.
-        profile.knock = oakWood.knock
+        profile.knock = oakWood.knock.scaled(pitch: 1.1)
+        // (Its top is also the crack of the leaf's edge in a slam: softer on a light door.)
+        for index in 5..<8 { profile.knock[index].gain *= 0.65 }
         profile.knockTouch = KnockTouch()
         // Light, painted wood: a higher, thinner tick.
-        profile.contact = ContactSet().scaled(pitch: 1.25, duration: 0.85, level: 0.9)
+        profile.contact = ContactSet().scaled(pitch: 1.12, duration: 0.85, level: 0.7)
+        profile.contact.stop = ContactNoise(level: 0.54, frequency: 525, q: 0.7, duration: 0.015)
         // A small rubber stop, and a light leaf that makes less of it.
         profile.stop.modes = DoorStop.rubber.modes.scaled(pitch: 1.2, decay: 0.9)
-        profile.levels = EventLevels(knock: 0.88, unlatch: 1.6, stop: 1.8)
+        profile.stop.leaf = 0.45
+        profile.stop.shudder = 0.07
+        profile.levels = EventLevels(knock: 0.64, unlatch: 1.9, stop: 1.45)
         profile.space = .cottage
-        profile.trim = 0.68
+        profile.trim = 0.67
         return profile
     }()
 
     /// A big weathered barn door: low and woody, a long groaning creak, a wide space.
     nonisolated static let barn: SoundProfile = {
         var profile = SoundProfile.oakWood
-        profile.panel = oakWood.panel.scaled(pitch: 0.75, decay: 1.4)
-        profile.knock = oakWood.knock.scaled(pitch: 0.8, decay: 1.3, gain: 1.1)
-        profile.frame = oakWood.frame.scaled(pitch: 0.8, decay: 1.3)
+        profile.panel = oakWood.panel.scaled(pitch: 0.67, decay: 1.5)
+        profile.knock = oakWood.knock.scaled(pitch: 0.72, decay: 1.35, gain: 1.1)
+        profile.frame = oakWood.frame.scaled(pitch: 0.72, decay: 1.4)
         profile.hinge = oakWood.hinge.scaled(pitch: 0.85, decay: 1.3)
         profile.creak.formants = [
             ModeSpec(851, 0.0050, 0.44),
@@ -454,17 +487,36 @@ extension SoundProfile {
             shudder: 0.2)
         profile.levels = EventLevels(knock: 0.8, unlatch: 1.7, stop: 0.46)
         profile.space = .barn
-        profile.trim = 0.64
+        profile.trim = 0.67
         return profile
     }()
 
     /// A massive castle door in a stone hall: deep thuds, slow loud groan, long echo.
     nonisolated static let castle: SoundProfile = {
         var profile = SoundProfile.oakWood
-        profile.panel = oakWood.panel.scaled(pitch: 0.6, decay: 1.8)
+        // The deepest door: its leaf and frame sit almost an octave under the reference wood. The
+        // strongest modes land between 100 and 250 Hz, where headphones give the weight and a
+        // phone speaker still plays the upper half (and the voicing's virtual bass fills in the
+        // rest), and they ring long: a heavy boom, not a thud.
+        profile.panel = oakWood.panel.scaled(pitch: 0.5, decay: 2.1, gain: 1.5)
         // Heavy and dark: a low, slow "thoom" of a massive leaf, almost no snap.
-        profile.knock = oakWood.knock.scaled(pitch: 0.58, decay: 2, gain: 1.5)
-        profile.frame = oakWood.frame.scaled(pitch: 0.6, decay: 1.8)
+        profile.knock = oakWood.knock.scaled(pitch: 0.52, decay: 2.2, gain: 1.5)
+        // (Its top is also the crack of the leaf's edge in a slam, which sits right where the bolt
+        // clanks: held back, so the slam is boom first.)
+        for index in 5..<8 { profile.knock[index].gain *= 0.6 }
+        // (And its mode at 140 Hz is just under what a phone plays: eased, to leave the level to
+        // the modes that are heard everywhere.)
+        profile.knock[1].gain *= 0.75
+        profile.frame = oakWood.frame.scaled(pitch: 0.5, decay: 2)
+        // (Its lowest mode, at 35 Hz, is under what even headphones give back: mostly held back,
+        // so it doesn't use up the headroom.)
+        profile.frame[0].gain = 0.25
+        // The frame's modes at 140 and 210 Hz are the lowest a phone plays: brought up, so the
+        // boom is there on its speaker too.
+        profile.frame[3].gain = 0.95
+        profile.frame[4].gain = 0.8
+        // The iron bolt stays, under the boom: on a phone its clank was most of the slam.
+        profile.latch = oakWood.latch.scaled(pitch: 1, decay: 1, gain: 0.55)
         profile.hinge = oakWood.hinge.scaled(pitch: 0.7, decay: 1.6)
         profile.creak.formants = [
             ModeSpec(917, 0.0050, 0.52),
@@ -490,26 +542,26 @@ extension SoundProfile {
         profile.creak.raspFrequency = 1_900
         profile.creak.lowCut = 120
         profile.creak.hiss = 0.006
-        profile.creak.level = 0.027
+        profile.creak.level = 0.025
         profile.creak.friction = FrictionMap(
             recipe: .init(count: 3, width: 12...18, strength: 0.7...0.95, floor: 0.3), seed: 0xCA5)
         profile.bed.airFrequency = 420
         profile.bed.airQ = 0.5
-        profile.bed.airLevel = 0.048
+        profile.bed.airLevel = 0.043
         profile.bed.rollLevel = 0.02
         profile.bed.rollPerDegree = 0.25
         profile.room = 0.32
         profile.character.heavyBolt = true
-        profile.knockTouch = KnockTouch(contact: 0.0018...0.0024, snapLevel: 0.05, snapPitch: 2, thump: 0.4)
+        profile.knockTouch = KnockTouch(contact: 0.0018...0.0024, snapLevel: 0.05, snapPitch: 2, thump: 0.3)
         // Massive oak on stone: a low, heavy contact; a big iron bolt; an iron ring for a stop.
         profile.contact = ContactSet().scaled(pitch: 0.6, duration: 1.7, level: 1.2)
         profile.contact.knock = ContactNoise(level: 0.06, frequency: 800, q: 0.7, duration: 0.005)
         profile.contact.latch = ContactNoise(level: 0.35, frequency: 1_700, q: 1.1, duration: 0.004)
         profile.contact.stop = ContactNoise(level: 1, frequency: 1_100, q: 1, duration: 0.007)
         profile.stop = .ironRing
-        profile.levels = EventLevels(knock: 0.98, unlatch: 0.66, stop: 0.5, slam: 0.84)
+        profile.levels = EventLevels(knock: 1.02, unlatch: 0.92, stop: 0.43, slam: 0.8)
         profile.space = .stoneHall
-        profile.trim = 0.5
+        profile.trim = 0.58
         return profile
     }()
 

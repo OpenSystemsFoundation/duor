@@ -44,10 +44,10 @@ nonisolated struct RoomAcoustics: Sendable, Equatable {
 // MARK: - Where each door stands
 
 nonisolated extension RoomAcoustics {
-    /// A carpeted hallway in a house: close walls, soft floor, gone in under half a second.
+    /// A carpeted hallway in a house: close walls, soft floor, gone in a third of a second.
     static let hallway = RoomAcoustics(
-        size: 0.75, decay: 0.4, damping: 0.6, diffusion: 0.55, preDelay: 0.003,
-        early: [Reflection(0.007, 0.7), Reflection(0.012, 0.5), Reflection(0.019, 0.3), .none], tail: 0.6)
+        size: 0.65, decay: 0.34, damping: 0.65, diffusion: 0.6, preDelay: 0.003,
+        early: [Reflection(0.006, 0.65), Reflection(0.011, 0.45), Reflection(0.017, 0.25), .none], tail: 0.5)
 
     /// A small furnished cottage room: low ceiling, rugs and curtains. Small and dry.
     static let cottage = RoomAcoustics(

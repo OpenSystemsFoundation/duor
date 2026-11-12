@@ -142,7 +142,9 @@ struct GainStagingTests {
     }
 
     @Test func doorsAreLevelled() {
-        // Knock, unlatch, open stop, slam: the loudness of every door within 6 dB of the others.
+        // Knock, unlatch, open stop, slam: the loudness of every door within 7.5 dB of the others.
+        // (Not closer: the cottage door is the quiet one on purpose, some 4 dB under the oak door,
+        // and the castle door carries a lot below 150 Hz, which counts in full here.)
         var levels: [Float] = []
         for (_, profile) in doors {
             let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 9)
@@ -153,7 +155,7 @@ struct GainStagingTests {
             }
             levels.append(10 * log10f(energy(samples) / Float(samples.count)))
         }
-        #expect(levels.max()! - levels.min()! < 6)
+        #expect(levels.max()! - levels.min()! < 7.5, "\(levels)")
     }
 
     @Test func changingTheDoorWhileItRingsDoesNotClick() {

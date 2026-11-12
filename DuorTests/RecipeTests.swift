@@ -466,6 +466,75 @@ struct RecipeTests {
                 > onPhone(play(.openStop, speed: 60, on: doors[door]!, seconds: 0.6).samples) + 3)
     }
 
+    // MARK: The wood doors next to each other
+
+    /// The share of a sound's energy under `frequency` (a fourth-order low-pass).
+    private func share(below frequency: Float, of samples: [Float]) -> Float {
+        var first = Biquad(.lowPass, frequency: frequency, q: 0.541, sampleRate: sampleRate)
+        var second = Biquad(.lowPass, frequency: frequency, q: 1.307, sampleRate: sampleRate)
+        return energy(samples.map { second.process(first.process($0)) }) / energy(samples)
+    }
+
+    /// Oak is an ordinary house door: the barn and castle doors are the deep ones. Their slams and
+    /// knocks carry more of their energy under 200 Hz, and more of it outright, and ring longer.
+    @Test func barnAndCastleAreDeeperThanOak() {
+        for seed: UInt32 in [42, 1, 2] {
+            let oak = play(.slam, speed: 320, on: .oak, seed: seed, seconds: 2).samples
+            let oakKnock = play(.knock, on: .oak, seed: seed, seconds: 1).samples
+            for (name, profile) in [("barn", SoundProfile.barn), ("castle", .castle)] {
+                let slam = play(.slam, speed: 320, on: profile, seed: seed, seconds: 2).samples
+                #expect(share(below: 200, of: slam) > share(below: 200, of: oak) * 1.15, "\(name) slam, share")
+                #expect(
+                    energy(slam) * share(below: 200, of: slam) > energy(oak) * share(below: 200, of: oak),
+                    "\(name) slam, energy")
+                let knock = play(.knock, on: profile, seed: seed, seconds: 1).samples
+                #expect(
+                    share(below: 200, of: knock) > share(below: 200, of: oakKnock) * 1.2, "\(name) knock, share")
+                // And the oak door is done sooner: less of its slam is left after a third of a second.
+                let late = Int(0.35 * sampleRate)
+                #expect(energy(slam[late...]) / energy(slam) > 3 * energy(oak[late...]) / energy(oak), "\(name) ring")
+            }
+            // The castle door is the deepest of all.
+            let barn = play(.slam, speed: 320, on: .barn, seed: seed, seconds: 2).samples
+            let castle = play(.slam, speed: 320, on: .castle, seed: seed, seconds: 2).samples
+            #expect(spectrum(castle).centroid < spectrum(barn).centroid)
+            #expect(spectrum(barn).centroid < spectrum(oak).centroid * 0.85)
+        }
+    }
+
+    /// The cottage door is the quiet one: its knock, latch and slam are each under the same sound
+    /// of the oak, barn and castle doors, flat and on the phone's speakers, and all of its sounds
+    /// together sit 3 dB or more under theirs (less when voiced, where the limiter holds the
+    /// louder doors back).
+    @Test func cottageIsTheQuietestWoodDoor() {
+        let others: [(String, SoundProfile)] = [("oak", .oak), ("barn", .barn), ("castle", .castle)]
+        let sounds: [(DoorSound, Float)] = [(.knock, 150), (.latch, 150), (.slam, 320), (.openStop, 150)]
+        func level(_ samples: [Float]) -> Float { 10 * log10f(energy(samples) / Float(samples.count)) }
+        for voiced in [false, true] {
+            var cottageTotal: Float = 0
+            var totals = [Float](repeating: 0, count: others.count)
+            for (sound, speed) in sounds {
+                let cottage = play(sound, speed: speed, on: .pine, voiced: voiced, seconds: 1.5).samples
+                cottageTotal += energy(cottage)
+                for (index, other) in others.enumerated() {
+                    let samples = play(sound, speed: speed, on: other.1, voiced: voiced, seconds: 1.5).samples
+                    totals[index] += energy(samples)
+                    // (Not the stops: those are different things, a rubber bumper, a post and a ring.)
+                    guard sound != .openStop else { continue }
+                    #expect(
+                        (voiced ? onPhone(cottage) : level(cottage)) < (voiced ? onPhone(samples) : level(samples)),
+                        "\(sound) against \(other.0), voiced \(voiced)")
+                }
+            }
+            for (index, other) in others.enumerated() {
+                let under = 10 * log10f(totals[index] / cottageTotal)
+                #expect(under > (voiced ? 1.5 : 3), "\(other.0), voiced \(voiced): \(under) dB")
+                // Quiet, not faint: it stays well within reach of the others.
+                #expect(under < 8, "\(other.0), voiced \(voiced): \(under) dB")
+            }
+        }
+    }
+
     // MARK: Knocks and metals
 
     @Test func fistAndKnuckleKeepTheirCharacters() {

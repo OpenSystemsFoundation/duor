@@ -122,6 +122,25 @@ struct GainStagingTests {
         #expect(synth.takeMeter().limiterGain < 0.75)
     }
 
+    /// A new sound is heard in full over the tails of old ones: when every voice is taken, the
+    /// one furthest into its decay gives way, not the one with the least time left. (Going by
+    /// time, the short hits of a new sound stole each other's voices before they sounded, while
+    /// the inaudible ends of an old slam kept theirs.)
+    @Test func newSoundsAreHeardOverOldTails() {
+        func knocks(after bursts: Bool) -> Float {
+            let synth = DoorSynth(sampleRate: sampleRate, profile: .castle, seed: 11)
+            if bursts {
+                for _ in 0..<40 { synth.play(.slam, speed: 600) }
+                _ = render(synth, seconds: 1)
+                _ = synth.takeMeter()
+            }
+            for _ in 0..<6 { synth.knock(at: .center) }
+            _ = render(synth, seconds: 0.3)
+            return synth.takeMeter().mixPeak
+        }
+        #expect(knocks(after: true) > knocks(after: false) * 0.8)
+    }
+
     @Test func doorsAreLevelled() {
         // Knock, unlatch, open stop, slam: the loudness of every door within 6 dB of the others.
         var levels: [Float] = []
@@ -204,10 +223,11 @@ struct ImpactTests {
         // No contact noise: just the ring, as before.
         let ring = play(ImpactSpec(modes: silentModes, contactTime: 0.002, amplitude: 1))
         #expect(peak(ring) == 0)
-        // A rubber stop is longer and duller than a steel bolt.
+        // A rubber stop is longer and duller than a steel bolt. (By less than it was: the bolt's
+        // crack was brought down under 2 to 5 kHz, where it stung.)
         let stop = play(ImpactSpec(modes: silentModes, contactTime: 0.002, amplitude: 1, contact: ContactSet().stop))
         let bolt = play(ImpactSpec(modes: silentModes, contactTime: 0.002, amplitude: 1, contact: ContactSet().latch))
-        #expect(brightness(stop) < brightness(bolt) / 3)
+        #expect(brightness(stop) < brightness(bolt) * 0.6)
         #expect(stop.lastIndex { $0 != 0 }! > 3 * bolt.lastIndex { $0 != 0 }!)
     }
 
@@ -229,6 +249,43 @@ struct ImpactTests {
                 last = (brightness(hit), energy(hit))
             }
         }
+    }
+
+    /// Highs die sooner than lows, whatever the table says: the loss added to every mode grows with
+    /// the square of its frequency, so nothing rings on where the ear is most sensitive.
+    @Test func highModesDieFasterThanTheirMaterialSays() {
+        // The same mode, written with a ring of 50 ms, at three pitches.
+        func ringTime(_ frequency: Float) -> Float {
+            let modes = ModeSet(repeating: ModeSpec(frequency, 0.05, 1))
+            let hit = play(ImpactSpec(modes: modes, contactTime: 0.0002, amplitude: 1, roughness: 0, detune: 0))
+            let loudest = peak(hit)
+            return Float(hit.lastIndex { abs($0) > loudest * 0.05 } ?? 0) / sampleRate
+        }
+        // A low mode is left as written (e⁻³ is 5 %: three times its decay).
+        #expect(abs(ringTime(300) - 0.15) < 0.02)
+        #expect(ringTime(3_000) < ringTime(300) * 0.3)
+        #expect(ringTime(6_000) < ringTime(3_000) * 0.4)
+        // At the frequency the law is set by, a mode lasts at most the time it gives.
+        #expect(ImpactVoice.damped(10, frequency: ImpactVoice.lossFrequency) <= ImpactVoice.lossDecay)
+        #expect(ImpactVoice.damped(0.02, frequency: 100) > 0.0199)
+    }
+
+    /// The crack of a soft contact has no top: its noise opens up with the hardness, and even the
+    /// hardest keeps most of its energy under 5 kHz.
+    @Test func softContactsHaveNoHighs() {
+        let silentModes = SoundProfile.oak.panel.scaled(pitch: 1, gain: 0)
+        func highShare(_ hardness: Float, above frequency: Float) -> Float {
+            let hit = play(
+                ImpactSpec(
+                    modes: silentModes, contactTime: 0.002, amplitude: 1, contact: ContactSet().panel,
+                    hardness: hardness))
+            var highPass1 = Biquad(.highPass, frequency: frequency, q: 0.541, sampleRate: sampleRate)
+            var highPass2 = Biquad(.highPass, frequency: frequency, q: 1.307, sampleRate: sampleRate)
+            return energy(hit.map { highPass2.process(highPass1.process($0)) }) / energy(hit)
+        }
+        #expect(highShare(0, above: 3_000) < 0.03)
+        #expect(highShare(1, above: 3_000) > highShare(0, above: 3_000) * 3)
+        #expect(highShare(1, above: 5_000) < 0.06)
     }
 
     /// The design's check: brightness and loudness both rise steadily with closing speed, inside

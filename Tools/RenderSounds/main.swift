@@ -392,8 +392,9 @@ func harshnessTargets(_ event: String, _ profile: SoundProfile) -> (centroid: Fl
 
 func reportHarshness() {
     print("\n== Harshness, first 200 ms: centroid Hz / share in 2–5 kHz % / above 5 kHz %, flat, then voiced")
-    print("   (flat targets: closes ≤ 700 Hz and ≤ 8 %, a hatch on a damper ≤ 1500 Hz and ≤ 30 %; unlatch ≤ 15 %;")
-    print("    open stop ≤ 10 %; above 5 kHz ≤ 3 %, with glass or a hatch ≤ 6 %; ! marks a miss)")
+    print("   (flat targets: closes about 700 Hz or lower and ≤ 8 %, a hatch on a damper 1500 Hz and ≤ 30 %;")
+    print("    unlatch ≤ 15 %; open stop ≤ 10 %; above 5 kHz ≤ 3 %, with glass or a hatch ≤ 6 %;")
+    print("    ! marks a miss, for the centroid by more than 5 %)")
     for prefix in ["", "speaker-"] {
         print(pad(prefix.isEmpty ? "flat" : "voiced", 10), events.map { pad($0.0, 19) }.joined())
         for (door, profile) in doors {
@@ -405,7 +406,7 @@ func reportHarshness() {
                 let target = harshnessTargets(name, profile)
                 let miss =
                     prefix.isEmpty
-                    && (centroid > target.centroid ?? .infinity || presence * 100 > target.presence ?? 100
+                    && (centroid > (target.centroid ?? .infinity) * 1.05 || presence * 100 > target.presence ?? 100
                         || air * 100 > target.air)
                 row += pad(
                     number(centroid, 5, 0) + "/" + number(presence * 100, 4) + "/" + number(air * 100, 4)

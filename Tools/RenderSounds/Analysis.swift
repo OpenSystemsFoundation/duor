@@ -68,7 +68,10 @@ func fft(_ real: inout [Float], _ imaginary: inout [Float]) {
     }
 }
 
-/// Power spectrum of `samples` (Hann-windowed frames of 4096, averaged).
+/// Power spectrum of `samples` (Hann-windowed frames of 4096, summed). Frames overlap by three
+/// quarters, so every sample counts the same wherever it falls: with half-overlapping frames a
+/// click counts for up to twice as much in the middle of a frame as between two, and the
+/// brightness of a sound depends on when it starts.
 func powerSpectrum(_ samples: ArraySlice<Float>, size: Int = 4096) -> [Float] {
     var total = [Float](repeating: 0, count: size / 2)
     let window = (0..<size).map { 0.5 - 0.5 * cos(2 * Float.pi * Float($0) / Float(size)) }
@@ -80,8 +83,8 @@ func powerSpectrum(_ samples: ArraySlice<Float>, size: Int = 4096) -> [Float] {
         }
         fft(&real, &imaginary)
         for bin in 0..<size / 2 { total[bin] += real[bin] * real[bin] + imaginary[bin] * imaginary[bin] }
-        start += size / 2
-    } while start + size / 2 < samples.endIndex
+        start += size / 4
+    } while start + size / 4 < samples.endIndex
     return total
 }
 
@@ -128,7 +131,10 @@ func harshness(_ samples: [Float]) -> Harshness {
         return Harshness(centroid: 0, presence: 0, air: 0)
     }
     let end = min(onset + Int(0.2 * sampleRate), samples.count)
-    let summary = summarize(powerSpectrum(samples[onset..<end], size: 1_024))
+    // Three quarters of a frame of lead-in, so the first milliseconds (the brightest) are not
+    // lost under the start of the first window.
+    let size = 1_024
+    let summary = summarize(powerSpectrum(samples[max(onset - size * 3 / 4, 0)..<end], size: size))
     return Harshness(centroid: summary.centroid, presence: summary.presence2to5k, air: summary.above5k)
 }
 

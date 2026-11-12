@@ -49,27 +49,56 @@ private func onPhone(_ samples: [Float]) -> Float {
     return 10 * log10f(max(best / Float(window), 1e-12))
 }
 
-/// Spectral centroid in Hz, the way the tool measures brightness: the power-weighted mean
-/// frequency over Hann-windowed frames of 4096.
-private func centroid(_ samples: [Float]) -> Float {
-    let size = 4_096
+/// Where the energy of a sound sits: its spectral centroid in Hz and the shares of its energy in
+/// 2 to 5 kHz (where the ear is most sensitive, and a phone speaker loudest) and above 5 kHz.
+private struct Spectrum {
+    var centroid: Float
+    var presence: Float
+    var air: Float
+}
+
+/// The power spectrum over Hann-windowed frames of `size`, summed up the way the tool does it.
+/// Frames overlap by three quarters and start with silence in front, so every sample counts the
+/// same: with half-overlapping frames a click counts for up to twice as much in the middle of a
+/// frame as between two, and how bright a sound measures depends on when in the render it starts
+/// (a slam's hit comes 36 ms after a latch's).
+private func spectrum(_ samples: some Collection<Float>, size: Int = 4_096) -> Spectrum {
+    let padded = [Float](repeating: 0, count: size * 3 / 4) + samples
     let window = (0..<size).map { 0.5 - 0.5 * cosf(2 * .pi * Float($0) / Float(size)) }
     var weighted: Float = 0
     var total: Float = 0
+    var presence: Float = 0
+    var air: Float = 0
     var start = 0
-    while start + size <= samples.count {
+    while start + size <= padded.count {
         var real = [Float](repeating: 0, count: size)
         var imaginary = [Float](repeating: 0, count: size)
-        for index in 0..<size { real[index] = samples[start + index] * window[index] }
+        for index in 0..<size { real[index] = padded[start + index] * window[index] }
         fft(&real, &imaginary)
         for bin in 1..<size / 2 {
             let power = real[bin] * real[bin] + imaginary[bin] * imaginary[bin]
-            weighted += Float(bin) * power
+            let frequency = Float(bin) * sampleRate / Float(size)
+            weighted += frequency * power
             total += power
+            if frequency >= 5_000 { air += power } else if frequency >= 2_000 { presence += power }
         }
-        start += size / 2
+        start += size / 4
     }
-    return total > 0 ? weighted / total * sampleRate / Float(size) : 0
+    guard total > 0 else { return Spectrum(centroid: 0, presence: 0, air: 0) }
+    return Spectrum(centroid: weighted / total, presence: presence / total, air: air / total)
+}
+
+/// Spectral centroid in Hz, the way the tool measures brightness.
+private func centroid(_ samples: [Float]) -> Float { spectrum(samples).centroid }
+
+/// The tool's harshness measure (`make sounds`): the spectrum of the first 200 ms after the onset
+/// (the first sample above 5 % of the peak), which is the stretch a listener judges a material by.
+private func onset(_ samples: [Float]) -> Spectrum {
+    let threshold = samples.reduce(0) { max($0, abs($1)) } * 0.05
+    guard let start = samples.firstIndex(where: { abs($0) > threshold }) else {
+        return Spectrum(centroid: 0, presence: 0, air: 0)
+    }
+    return spectrum(samples[start..<min(start + Int(0.2 * sampleRate), samples.count)], size: 1_024)
 }
 
 /// In-place radix-2 FFT.
@@ -161,8 +190,9 @@ struct RecipeTests {
         var brightness: [Float: Float] = [:]
         for speed in speeds {
             let sound: DoorSound = speed >= DoorStrength.slamSpeed ? .slam : .latch
-            // Averaged over a few closes: every hit is a little different.
-            let seeds: [UInt32] = [1, 2, 3]
+            // Averaged over a few closes: every hit is a little different (the castle's by a
+            // tenth either way in brightness, so it takes six to see a trend).
+            let seeds: [UInt32] = [1, 2, 3, 4, 5, 6]
             var level: Float = 0
             var bright: Float = 0
             for seed in seeds {
@@ -297,6 +327,43 @@ struct RecipeTests {
         #expect(full.after > threshold.after + 1, "\(door)")
         #expect(hard.after > full.after + 1, "\(door)")
         #expect(hard.whole > full.whole + 1, "\(door)")
+    }
+
+    // MARK: Soft on the ear
+
+    /// The design's check after 1.1 was found harsh on a real phone: every sound starts dark.
+    /// Over the first 200 ms, flat: a closing door has its energy around 700 Hz or lower with at
+    /// most 8 % of it in 2 to 5 kHz (a real door closing is dark, and that band is where a phone
+    /// speaker and the ear are both at their most sensitive); an unlatch at most 15 % there, an
+    /// open stop 10 %; and next to nothing above 5 kHz (3 %; 6 % where there is glass or a seal).
+    /// The hatch on its damper hisses, so it may sit higher, but under 1.5 kHz and 30 %. In 1.1
+    /// as first built, the cottage door's slam had 30 % in 2 to 5 kHz and the hatch 62 %.
+    @Test(arguments: ["oak", "pine", "barn", "castle", "spaceship", "steel"])
+    func everySoundStartsDark(_ door: String) {
+        let profile = doors[door]!
+        let hatch = profile.character.softClose
+        let airLimit: Float = hatch || profile.character.glassRattle > 0 ? 0.06 : 0.03
+        // The takes `make sounds` measures, and two more of each.
+        for seed: UInt32 in [42, 1, 2] {
+            let closes: [(DoorSound, Float)] = [(.latch, 50), (.latch, 150), (.slam, 320)]
+            for (sound, speed) in closes {
+                let start = onset(play(sound, speed: speed, on: profile, seed: seed).samples)
+                // (One slam differs from the next by several percent.)
+                #expect(start.centroid < (hatch ? 1_500 : 700) * 1.1, "\(door) \(sound) at \(speed): \(start)")
+                #expect(start.presence < (hatch ? 0.3 : 0.08), "\(door) \(sound) at \(speed): \(start)")
+                #expect(start.air < airLimit, "\(door) \(sound) at \(speed): \(start)")
+            }
+            let unlatch = onset(play(.unlatch, speed: 60, on: profile, seed: seed).samples)
+            #expect(unlatch.presence < 0.15 && unlatch.air < airLimit, "\(door) unlatch: \(unlatch)")
+            let stop = onset(play(.openStop, speed: 120, on: profile, seed: seed).samples)
+            #expect(stop.presence < 0.1 && stop.air < airLimit, "\(door) open stop: \(stop)")
+            let knock = onset(play(.knock, on: profile, seed: seed).samples)
+            #expect(knock.presence < 0.03 && knock.air < 0.03, "\(door) knock: \(knock)")
+        }
+        // Even the hardest slam keeps out of the band that stings.
+        let hard = onset(play(.slam, speed: 700, on: profile).samples)
+        #expect(hard.presence < (hatch ? 0.3 : 0.12), "\(door) hard slam: \(hard)")
+        #expect(hard.air < airLimit, "\(door) hard slam: \(hard)")
     }
 
     // MARK: Levels

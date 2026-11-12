@@ -48,7 +48,7 @@ nonisolated struct CreakProfile: Sendable {
     /// How much of that sliding noise is heard directly, as a broad soft band up to
     /// `raspFrequency`, instead of through the resonances. Dry wood on a dry pin is mostly this.
     var rasp: Float = 48
-    var raspFrequency: Float = 2_800
+    var raspFrequency: Float = 2_000
     /// Everything below this (Hz) is rolled off. Slips push one way, so without it every slip
     /// carries a thump under the door's lowest mode: mud on headphones, nothing on a phone.
     var lowCut: Float = 160

@@ -232,6 +232,8 @@ private nonisolated struct SynthCore: Sendable {
     static let chunkSize = 512
     /// How hard a knock's body is driven into its own soft saturation (0 = clean).
     static let knockDrive: Float = 0.6
+    /// Level of the leaf's edge knocking on its stop in a full slam, next to the blow.
+    static let edgeKnock: Float = 0.28
 
     init(sampleRate: Float, profile: SoundProfile, seed: UInt32, speakerVoicing: Bool) {
         self.sampleRate = sampleRate
@@ -374,7 +376,7 @@ private nonisolated struct SynthCore: Sendable {
             let heavy = profile.character.heavyBolt
             strike(
                 ImpactSpec(
-                    modes: profile.latch, contactTime: 0.0002, amplitude: 0.09 * rattle * volume,
+                    modes: profile.latch, contactTime: 0.0004, amplitude: 0.09 * rattle * volume,
                     roughness: 0.6, delay: random.value(in: 0.004...0.012),
                     pitchScale: random.value(in: 0.95...1.05) * (heavy ? 0.5 : 1), decayScale: heavy ? 1.5 : 0.5,
                     reverbSend: 0.3, contact: profile.contact.latch))
@@ -434,18 +436,23 @@ private nonisolated struct SynthCore: Sendable {
             // Clear of the plate.
             strike(
                 ImpactSpec(
-                    modes: profile.latch, contactTime: 0.0003, amplitude: 0.34 * volume, delay: released,
+                    modes: profile.latch, contactTime: 0.0003, amplitude: 0.3 * volume, delay: released,
                     contact: profile.contact.latch, hardness: 0.45))
         }
+        // Under the click, the door it is mounted in: a small low thunk, so the click has a body.
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0.005, amplitude: 0.16 * volume, roughness: 0.1, delay: released,
+                decayScale: 0.6, hardness: 0.3))
         // The leaf comes off its stop: the frame gives a little, low and quiet.
         let free = released + random.value(in: 0.02...0.03)
         strike(
             ImpactSpec(
-                modes: profile.frame, contactTime: 0.009, amplitude: 0.2 * volume, roughness: 0.1, delay: free,
+                modes: profile.frame, contactTime: 0.009, amplitude: 0.26 * volume, roughness: 0.1, delay: free,
                 decayScale: 0.8, contact: profile.contact.frame.scaled(level: 0.5), hardness: 0.15))
         strike(
             ImpactSpec(
-                modes: profile.panel, contactTime: 0.004, amplitude: 0.12 * volume, delay: free,
+                modes: profile.panel, contactTime: 0.004, amplitude: 0.16 * volume, delay: free,
                 contact: profile.contact.panel.scaled(level: 0.5), hardness: 0.25))
         rattleGlass(character.glassRattle * 0.12 * volume, after: free + 0.01, hardness: 0.5)
     }
@@ -497,20 +504,33 @@ private nonisolated struct SynthCore: Sendable {
         let bright = weight.squareRoot()
         let heavy = weight * weight
         let crack = 1 + 1.2 * bright
-        let roomful = 1 + 0.6 * heavy
+        let roomful = 1 + 0.4 * heavy
         let drive = DoorSynth.slamDrive * (min(max((hardness - 0.55) / 0.25, 0), 1) + over)
-        let blow = force * (1 - 0.3 * over)
+        let blow = force * (1 - 0.12 * over) * (1 + (profile.levels.slam - 1) * weight)
         strike(
             ImpactSpec(
-                modes: profile.frame, contactTime: 0.004, amplitude: (0.55 + 0.05 * weight) * blow,
-                roughness: 0.3 + 0.2 * weight, delay: start, decayScale: 1 + 0.2 * heavy, reverbSend: roomful,
+                modes: profile.frame, contactTime: 0.004, amplitude: 0.55 * blow,
+                roughness: 0.3 + 0.2 * weight, delay: start, decayScale: 1 + 0.1 * heavy, reverbSend: roomful,
                 contact: profile.contact.frame.scaled(level: crack), hardness: hardness, drive: drive))
         strike(
             ImpactSpec(
-                modes: profile.panel, contactTime: 0.003, amplitude: (0.35 + 0.1 * weight) * blow,
-                delay: start + 0.0015 * weight, detune: 0.03 + 0.02 * weight, decayScale: 1 + 0.5 * heavy,
+                modes: profile.panel, contactTime: 0.003 * (1 - 0.25 * bright),
+                amplitude: (0.35 + 0.05 * weight) * blow,
+                delay: start + 0.0015 * weight, detune: 0.03 + 0.02 * weight, decayScale: 1 + 0.3 * heavy,
                 reverbSend: roomful, contact: profile.contact.panel.scaled(level: crack), hardness: hardness,
                 drive: drive))
+
+        // The edge of the leaf knocks on its stop, wood on wood: a short contact, and the brightest
+        // part of the wood. It comes in with the slam, and it is what makes a harder close
+        // brighter: in the middle (500 Hz to 1.5 kHz), like a knock, not at the top.
+        if weight > 0.02 {
+            strike(
+                ImpactSpec(
+                    modes: profile.knock, contactTime: 0.001,
+                    amplitude: Self.edgeKnock * weight * (1.5 + 0.5 * heavy) * blow,
+                    roughness: 0.3, delay: start + 0.0005, pitchScale: 2, decayScale: 0.8, reverbSend: roomful,
+                    contact: profile.contact.panel.scaled(level: crack), hardness: hardness))
+        }
 
         // The bolt: touches the strike plate, rides up it, snaps home. A heavy iron bolt is lower
         // and slower.
@@ -520,7 +540,7 @@ private nonisolated struct SynthCore: Sendable {
         let home = start + strength.boltDelay * (heavyBolt ? 2 : 1)
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.00025, amplitude: (0.1 + 0.15 * hardness) * force, delay: start,
+                modes: profile.latch, contactTime: 0.00035, amplitude: (0.1 + 0.15 * hardness) * force, delay: start,
                 pitchScale: boltPitch, decayScale: boltDecay * 0.6, contact: profile.contact.latch,
                 hardness: hardness))
         // More of the scrape when the door is eased shut: the bolt takes its time. A slow bolt
@@ -536,10 +556,15 @@ private nonisolated struct SynthCore: Sendable {
                     duration: home - start, swell: 1, glide: 2.2, ring: 0.05 + 0.15 * hardness)))
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.0002, amplitude: (0.3 + 0.45 * hardness - 0.15 * weight) * blow,
+                modes: profile.latch, contactTime: 0.0003, amplitude: (0.3 + 0.45 * hardness + 0.05 * weight) * blow,
                 delay: home,
                 pitchScale: 1.08 * boltPitch, decayScale: boltDecay, contact: profile.contact.latch,
                 hardness: hardness))
+        // And the leaf answers the bolt: a low thunk under the click, so it is never a bare tick.
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0.005, amplitude: (0.1 + 0.1 * hardness) * blow, roughness: 0.1,
+                delay: home, decayScale: 0.6, hardness: hardness * 0.6))
 
         // The second touch: a latched leaf settling against its stop, a slammed one bouncing
         // back off the frame.
@@ -547,7 +572,7 @@ private nonisolated struct SynthCore: Sendable {
             slam
             ? start + random.value(in: 0.07...0.11)
             : home + random.value(in: 0.045...0.075) * (heavyBolt ? 1.3 : 1)
-        let touch = (0.13 + 0.25 * weight) * force
+        let touch = (0.13 + 0.15 * weight + 0.12 * over) * force
         let softer = max(hardness - 0.3, 0)
         strike(
             ImpactSpec(
@@ -560,14 +585,14 @@ private nonisolated struct SynthCore: Sendable {
         // The bolt knocks in its keep as the leaf comes back.
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.0003, amplitude: (0.07 + 0.1 * weight) * force,
+                modes: profile.latch, contactTime: 0.00035, amplitude: (0.07 + 0.1 * weight) * force,
                 delay: again + 0.003, pitchScale: 0.95 * boltPitch, decayScale: boltDecay * 0.5,
                 contact: profile.contact.latch, hardness: softer))
         if over > 0.05 {
             // Thrown hard enough to come back twice.
             strike(
                 ImpactSpec(
-                    modes: profile.frame, contactTime: 0.007, amplitude: 0.3 * over * force, roughness: 0.2,
+                    modes: profile.frame, contactTime: 0.007, amplitude: 0.4 * over * force, roughness: 0.2,
                     delay: again + random.value(in: 0.055...0.085), decayScale: 0.8,
                     contact: profile.contact.frame, hardness: max(softer - 0.2, 0)))
         }
@@ -575,11 +600,11 @@ private nonisolated struct SynthCore: Sendable {
         // The hardware rattling down: hinge knuckles on their pins, longer after a harder slam.
         if weight > 0.05 {
             var time = start + 0.03
-            var level = 0.45 * bright * force
+            var level = 0.3 * (0.4 * bright + 0.6 * weight) * force
             for _ in 0..<(4 + Int(2 * over + 0.5)) {
                 strike(
                     ImpactSpec(
-                        modes: profile.hinge, contactTime: 0.0004, amplitude: level, delay: time,
+                        modes: profile.hinge, contactTime: 0.0006, amplitude: level, delay: time,
                         pitchScale: random.value(in: 0.95...1.05), contact: profile.contact.hinge,
                         hardness: hardness))
                 time += random.value(in: 0.02...0.045) * (1 + 0.4 * over)
@@ -591,7 +616,7 @@ private nonisolated struct SynthCore: Sendable {
             character.glassRattle * (0.4 + 0.6 * weight) * force * (1 - 0.12 * over), after: start + 0.006,
             hardness: hardness)
         clatterBoards(
-            character.looseBoards * (0.35 + 0.65 * weight) * blow, after: start + 0.01,
+            character.looseBoards * (0.1 + 0.9 * weight) * blow, after: start + 0.01,
             count: 2 + Int(3 * weight + 0.5), hardness: hardness)
     }
 
@@ -601,11 +626,11 @@ private nonisolated struct SynthCore: Sendable {
         let hardness = strength.hardness
         // Under the damper loudness follows what speed is left more closely than on a free door:
         // eased shut, the hatch hardly lands.
-        let force = powf(max(strength.speed, DoorStrength.softest) / 150, 1.2) * profile.levels.softClose
+        let force = powf(max(strength.speed, DoorStrength.softest) / 150, 1.1) * profile.levels.softClose
         // The seal takes up, air let out as it is squeezed: most of what is heard of a soft close.
         strike(
             .noise(
-                ContactNoise(level: 0.36, frequency: 2_200, q: 1.2, duration: 0.45, glide: 0.6),
+                ContactNoise(level: 0.36, frequency: 900, q: 0.9, duration: 0.45, glide: 0.6),
                 amplitude: profile.character.airlockHiss * force, delay: 0.01, reverbSend: 0.5, hardness: hardness))
         // So the hit itself is softer than the speed says: a padded thud, and the skin ringing.
         strike(
@@ -620,8 +645,8 @@ private nonisolated struct SynthCore: Sendable {
         let home = strength.boltDelay * 0.8
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.00015, amplitude: 0.22 * force, delay: home,
-                pitchScale: 1.35, decayScale: 0.5, contact: profile.contact.latch, hardness: hardness))
+                modes: profile.latch, contactTime: 0.0003, amplitude: 0.18 * force, delay: home,
+                pitchScale: 1.1, decayScale: 0.5, contact: profile.contact.latch, hardness: hardness))
         // And the damper pushes back once.
         strike(
             ImpactSpec(
@@ -695,7 +720,7 @@ private nonisolated struct SynthCore: Sendable {
         clatterBoards(profile.character.looseBoards * 0.3 * force, after: 0.012, count: 2, hardness: hardness)
     }
 
-    /// A pneumatic "pssshh": noise through broad high resonances, swelling and fading.
+    /// A pneumatic "pfff": noise through broad resonances (`SoundProfile.air`), swelling and fading.
     private mutating func hiss(_ level: Float, after delay: Float, duration: Float) {
         guard level > 0.001 else { return }
         // A long contact spreads the push thin, so scale up by its length.
@@ -714,7 +739,7 @@ private nonisolated struct SynthCore: Sendable {
         for _ in 0..<5 {
             strike(
                 ImpactSpec(
-                    modes: SoundProfile.glass, contactTime: 0.00015, amplitude: amplitude * 0.5, roughness: 0.6,
+                    modes: SoundProfile.glass, contactTime: 0.0004, amplitude: amplitude * 0.4, roughness: 0.6,
                     delay: time, detune: 0.02, pitchScale: random.value(in: 0.97...1.03), reverbSend: 0.5,
                     hardness: hardness))
             time += random.value(in: 0.012...0.03)
@@ -738,18 +763,18 @@ private nonisolated struct SynthCore: Sendable {
         }
     }
 
-    /// Starts an impact on a free voice, or steals the one closest to finishing.
+    /// Starts an impact on a free voice, or steals the one furthest into its decay.
     private mutating func strike(_ spec: ImpactSpec) {
         var chosen = 0
-        var leastRemaining = Int.max
+        var leastLeft = Float.infinity
         for index in voices.indices {
-            let remaining = voices[index].remaining
-            if remaining == 0 {
+            let left = voices[index].lifeLeft
+            if left == 0 {
                 chosen = index
                 break
             }
-            if remaining < leastRemaining {
-                leastRemaining = remaining
+            if left < leastLeft {
+                leastLeft = left
                 chosen = index
             }
         }

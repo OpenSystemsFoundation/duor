@@ -61,18 +61,18 @@ nonisolated extension RoomAcoustics {
 
     /// A stone hall: a long, bright tail, and the far wall answering late.
     static let stoneHall = RoomAcoustics(
-        size: 2.7, decay: 1.8, damping: 0.25, diffusion: 0.5, preDelay: 0.018,
+        size: 2.7, decay: 1.8, damping: 0.33, diffusion: 0.5, preDelay: 0.018,
         early: [Reflection(0.026, 0.5), Reflection(0.043, 0.4), Reflection(0.071, 0.3), Reflection(0.118, 0.7)],
         tail: 1)
 
     /// A small metal airlock: hard walls a step away. Bright, tight, a little ringy.
     static let airlock = RoomAcoustics(
-        size: 0.42, decay: 0.35, damping: 0.08, diffusion: 0.25, preDelay: 0.001,
+        size: 0.42, decay: 0.35, damping: 0.35, diffusion: 0.25, preDelay: 0.001,
         early: [Reflection(0.003, 0.8), Reflection(0.0055, 0.65), Reflection(0.008, 0.45), .none], tail: 0.9)
 
     /// A concrete stairwell: hard and tall, with over a second of echo.
     static let stairwell = RoomAcoustics(
-        size: 1.7, decay: 1.2, damping: 0.3, diffusion: 0.4, preDelay: 0.008,
+        size: 1.7, decay: 1.2, damping: 0.45, diffusion: 0.4, preDelay: 0.008,
         early: [Reflection(0.011, 0.65), Reflection(0.019, 0.5), Reflection(0.032, 0.4), Reflection(0.052, 0.3)],
         tail: 1.1)
 
@@ -112,7 +112,7 @@ nonisolated struct SceneAcoustics: Sendable, Equatable {
     /// A great hall beyond the door: a long tail blooms as it opens.
     static let greatHall = SceneAcoustics(
         room: RoomAcoustics(
-            size: 2.9, decay: 2.3, damping: 0.3, diffusion: 0.55, preDelay: 0.025,
+            size: 2.9, decay: 2.3, damping: 0.4, diffusion: 0.55, preDelay: 0.025,
             early: [Reflection(0.034, 0.4), Reflection(0.058, 0.35), Reflection(0.097, 0.4), .none], tail: 1),
         level: 0.3, roomLoss: 0.15)
 
@@ -126,7 +126,7 @@ nonisolated struct SceneAcoustics: Sendable, Equatable {
     /// A brick wall right behind the door: a hard slap from an arm's length away, next to no tail.
     static let brickWall = SceneAcoustics(
         room: RoomAcoustics(
-            size: 0.3, decay: 0.12, damping: 0.15, diffusion: 0.1, preDelay: 0.001,
+            size: 0.3, decay: 0.12, damping: 0.35, diffusion: 0.1, preDelay: 0.001,
             early: [Reflection(0.006, 1), Reflection(0.0125, 0.45), Reflection(0.019, 0.2), .none], tail: 0.2),
         level: 0.35, roomLoss: 0)
 }

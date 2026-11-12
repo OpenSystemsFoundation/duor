@@ -94,6 +94,8 @@ nonisolated struct ImpactVoice: Sendable {
 
     // Contact noise.
     private var band = Biquad(.bandPass, frequency: 1_000, q: 1, sampleRate: 48_000)
+    /// Low-pass after the band: how far up the burst reaches, set by the hardness.
+    private var tone = Biquad(.lowPass, frequency: 4_000, q: 0.707, sampleRate: 48_000)
     private var noiseLength = 0
     private var noiseLevel: Float = 0
     private var noiseAttack: Float = 0
@@ -120,8 +122,15 @@ nonisolated struct ImpactVoice: Sendable {
     /// A stolen voice fades over this long instead of being cut dead, which would click.
     static let stealFade: Float = 0.002
 
-    /// Samples until this voice falls silent. Used to steal the voice closest to finishing.
-    var remaining: Int { isActive ? delay + lifetime - age : 0 }
+    /// How much of its ring this voice has left, 0 (silent) ... 1 (just struck), and more than 1
+    /// while it still waits for its delay. Used to steal the voice furthest into its decay: that
+    /// is the quietest one, however long its tail still is. (Going by the time left instead, the
+    /// short clicks of a new sound are stolen by its own later hits before they are heard, while
+    /// the inaudible end of an old slam keeps its voices.)
+    var lifeLeft: Float {
+        guard isActive else { return 0 }
+        return Float(lifetime - age) / Float(max(lifetime, 1)) + (delay > 0 ? 1 : 0)
+    }
 
     mutating func start(_ spec: ImpactSpec, sampleRate: Float, random: inout NoiseSource) {
         if isActive, age > 0 {
@@ -136,9 +145,9 @@ nonisolated struct ImpactVoice: Sendable {
         // (A voice stolen before it sounded has nothing to fade; a ghost already fading goes on.)
 
         // Harder is shorter and brighter: a third of the contact time from the softest hit to the
-        // hardest, and a few dB per octave less or more in the high modes.
+        // hardest, and a few dB per octave less or more in the modes of the middle.
         let hardness = (spec.hardness.isFinite ? min(max(spec.hardness, 0), 1) : 0.5) - 0.5
-        let shortening = expf(-1.1 * hardness)
+        let shortening = expf(-Self.shortening * hardness)
 
         delay = Int(max(spec.delay, 0) * sampleRate)
         age = 0
@@ -156,13 +165,17 @@ nonisolated struct ImpactVoice: Sendable {
         modes.silence()
         for index in spec.modes.indices {
             let mode = spec.modes[index]
-            let decay = mode.decay * spec.decayScale * (1 + 0.1 * random.bipolar())
             let frequency = mode.frequency * spec.pitchScale * (1 + spec.detune * random.bipolar())
+            let decay = Self.damped(
+                mode.decay * spec.decayScale * (1 + 0.1 * random.bipolar()), frequency: frequency)
             // Modes below the hinge keep their level: a soft contact still moves the whole object,
             // it just doesn't reach the high modes, and a hard one adds to them. So a harder hit is
             // never duller or quieter than a softer one, whatever it hits.
             let tilt =
-                hardness == 0 ? 1 : powf(max(mode.frequency, Self.tiltHinge) / Self.tiltHinge, Self.tilt * hardness)
+                hardness == 0
+                ? 1
+                : powf(
+                    min(max(mode.frequency, Self.tiltHinge), Self.tiltTop) / Self.tiltHinge, Self.tilt * hardness)
             modes.tune(lane: index, frequency: frequency, decay: decay, gain: mode.gain * tilt, sampleRate: sampleRate)
             longestDecay = max(longestDecay, decay)
         }
@@ -180,6 +193,11 @@ nonisolated struct ImpactVoice: Sendable {
             noiseLength = max(2, Int(length * sampleRate))
             noiseStep = 1 / Float(noiseLength)
             band = Biquad(.bandPass, frequency: frequency, q: q, sampleRate: sampleRate)
+            // Surfaces that meet slowly make no highs at all: the top of the burst opens with the
+            // hardness, from `softTop` Hz for the softest hit to `hardTop` for the hardest.
+            // And never more than two octaves above the band: what is dull stays dull.
+            let top = min(Self.softTop * powf(Self.hardTop / Self.softTop, hardness + 0.5), 4 * frequency)
+            tone = Biquad(.lowPass, frequency: top, q: 0.707, sampleRate: sampleRate)
             rate = sampleRate
             noiseFrequency = frequency
             noiseQ = q
@@ -209,11 +227,32 @@ nonisolated struct ImpactVoice: Sendable {
     }
 
     /// How strongly hardness tilts the modes: the exponent on frequency at the hardest hit is half
-    /// of this (0.7 is about 2 dB per octave), above `tiltHinge` Hz. The hinge is the same for
-    /// every object, so a harder close also shifts the balance from the thud of the leaf toward
-    /// the click of the bolt.
+    /// of this (0.7 is about 2 dB per octave), between `tiltHinge` and `tiltTop` Hz. The hinge is
+    /// the same for every object, so a harder close also shifts the balance from the thud of the
+    /// leaf toward the click of the bolt. Above the top nothing more is added: a harder hit is
+    /// brighter in the middle, where it sounds firm, not in the band where it would sting.
     private static let tilt: Float = 0.7
     private static let tiltHinge: Float = 250
+    private static let tiltTop: Float = 2_000
+    /// How much shorter a harder contact is: e to this power from the softest hit to the hardest.
+    private static let shortening: Float = 1.1
+    /// The top of the contact noise, softest hit to hardest, in Hz.
+    private static let softTop: Float = 1_500
+    private static let hardTop: Float = 4_500
+
+    /// High modes lose their energy faster than their material alone says: to the air, and into
+    /// whatever the object is mounted in. The loss grows with the square of the frequency and is
+    /// added to the mode's own, so nothing rings on in the band where the ear is most sensitive:
+    /// a mode at `lossFrequency` lasts at most `lossDecay` seconds (to 1/e), one an octave up a
+    /// quarter of that. Low modes are left as written.
+    static let lossFrequency: Float = 3_000
+    static let lossDecay: Float = 0.012
+
+    /// `decay` (seconds to 1/e) of a mode at `frequency`, with the loss of the highs added.
+    static func damped(_ decay: Float, frequency: Float) -> Float {
+        let relative = frequency / lossFrequency
+        return 1 / (1 / max(decay, 0.0005) + relative * relative / lossDecay)
+    }
 
     /// The soft overload behind `ImpactSpec.drive`: close to tanh (within 2.5 %), levelling off
     /// at ±1, without the cost of an exponential on every sample of every driven voice.
@@ -267,7 +306,7 @@ nonisolated struct ImpactVoice: Sendable {
                         .bandPass, frequency: min(noiseFrequency * expf(noiseGlide * along), rate * 0.4), q: noiseQ,
                         sampleRate: rate)
                 }
-                burst = band.process(noise.bipolar()) * envelope
+                burst = tone.process(band.process(noise.bipolar())) * envelope
                 force += burst * noiseRing
             }
             var sample = modes.process(force)

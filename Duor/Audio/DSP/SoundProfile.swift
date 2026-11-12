@@ -489,15 +489,25 @@ extension SoundProfile {
         // strongest modes land between 100 and 250 Hz, where headphones give the weight and a
         // phone speaker still plays the upper half (and the voicing's virtual bass fills in the
         // rest), and they ring long: a heavy boom, not a thud.
-        profile.panel = oakWood.panel.scaled(pitch: 0.5, decay: 2.1, gain: 1.25)
+        profile.panel = oakWood.panel.scaled(pitch: 0.5, decay: 2.1, gain: 1.5)
         // Heavy and dark: a low, slow "thoom" of a massive leaf, almost no snap.
         profile.knock = oakWood.knock.scaled(pitch: 0.52, decay: 2.2, gain: 1.5)
+        // (Its top is also the crack of the leaf's edge in a slam, which sits right where the bolt
+        // clanks: held back, so the slam is boom first.)
+        for index in 5..<8 { profile.knock[index].gain *= 0.6 }
+        // (And its mode at 140 Hz is just under what a phone plays: eased, to leave the level to
+        // the modes that are heard everywhere.)
+        profile.knock[1].gain *= 0.75
         profile.frame = oakWood.frame.scaled(pitch: 0.5, decay: 2)
         // (Its lowest mode, at 35 Hz, is under what even headphones give back: mostly held back,
         // so it doesn't use up the headroom.)
         profile.frame[0].gain = 0.25
-        // The iron bolt stays, a little under the boom: on a phone its clank was most of the slam.
-        profile.latch = oakWood.latch.scaled(pitch: 1, decay: 1, gain: 0.65)
+        // The frame's modes at 140 and 210 Hz are the lowest a phone plays: brought up, so the
+        // boom is there on its speaker too.
+        profile.frame[3].gain = 0.95
+        profile.frame[4].gain = 0.8
+        // The iron bolt stays, under the boom: on a phone its clank was most of the slam.
+        profile.latch = oakWood.latch.scaled(pitch: 1, decay: 1, gain: 0.55)
         profile.hinge = oakWood.hinge.scaled(pitch: 0.7, decay: 1.6)
         profile.creak.formants = [
             ModeSpec(917, 0.0050, 0.52),
@@ -540,9 +550,9 @@ extension SoundProfile {
         profile.contact.latch = ContactNoise(level: 0.35, frequency: 1_700, q: 1.1, duration: 0.004)
         profile.contact.stop = ContactNoise(level: 1, frequency: 1_100, q: 1, duration: 0.007)
         profile.stop = .ironRing
-        profile.levels = EventLevels(knock: 1.02, unlatch: 0.86, stop: 0.46, slam: 0.8)
+        profile.levels = EventLevels(knock: 1.02, unlatch: 0.92, stop: 0.43, slam: 0.8)
         profile.space = .stoneHall
-        profile.trim = 0.55
+        profile.trim = 0.58
         return profile
     }()
 

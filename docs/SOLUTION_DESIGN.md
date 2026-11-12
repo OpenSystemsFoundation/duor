@@ -348,10 +348,10 @@ Each door type is a `SoundProfile` preset (its wood, frame, creak and room) plus
 
 | Door | Wood and room | Signature |
 |---|---|---|
-| Oak | Solid oak (the reference wood), small hallway. Knock: a soft, warm **fist knock** (padded contact, damped, a little frame thud, no snap) | — |
-| Cottage | Painted pine: higher (×1.2), lighter creak. Knock: a crisp **knuckle knock** with a sharp snap | **Glass panes rattle** on latches and slams: a soft tink around 1.4 kHz |
-| Barn | Big weathered boards: low, long groaning creak, wide space | **Loose boards clatter** after hits |
-| Castle | Massive oak, very low, slow loud groan, stone-hall echo. Knock: heavy and dark, with a deep thump of the whole leaf | **Heavy iron bolt**: low, long clanks, a scrape when drawn |
+| Oak | An ordinary, well-fitted house door of solid oak: leaf and frame a little above the reference wood (×1.08, ×1.1) and damped more (ring ×0.7), the frame's lowest mode held back, tight hinges, a short click; a small carpeted hallway (0.34 s). A tidy "thock" that is over in half a second. Knock: a soft, warm **fist knock** (padded contact, damped, no snap, no frame boom) | — |
+| Cottage | A light painted pine door, **the quiet one**: higher (×1.3), a boxy middle with little below 150 Hz, a short ring, a softer latch, a lighter creak, the smallest and driest room. Set about 4 dB under the oak door (2 to 2.5 dB on the phone's speakers). Knock: a crisp **knuckle knock** with a sharp snap | **Glass panes** tinkle faintly on latches and slams: a soft tink around 1.4 kHz |
+| Barn | Big weathered boards: low (leaf ×0.67, frame ×0.72), ringing on for over a second, a long groaning creak, a wide space | **Loose boards clatter** after hits |
+| Castle | Massive oak, **the deepest door**: leaf and frame an octave under the reference wood (×0.5) with the strongest modes between 100 and 250 Hz ringing twice as long, the 140 and 210 Hz frame modes brought up so the boom is there on a phone speaker too; slow loud groan, stone-hall echo. Knock: heavy and dark, with a deep thump of the whole leaf | **Heavy iron bolt**: low, long clanks (kept under the boom), a scrape when drawn |
 | Spaceship | Thin aluminum hull: bright, short metallic "dink" knocks, a hollow aluminum frame, a quiet servo hum instead of a creak | **Airlock**: a soft pneumatic "pfff" (around 1 kHz) when it unseals and seals; a damper instead of a slam (padded thud, magnetic click) |
 | Metal | Steel plates that ring briefly; knock is a metallic "bong"; stairwell echo | **Squealing hinge**: metallic and tonal but low and breathy (centroid ~1 kHz), a booming slam that settles in under a second |
 
@@ -364,6 +364,8 @@ Each door type is a `SoundProfile` preset (its wood, frame, creak and room) plus
 | Bronze | Lowest and bell-like (×0.72, ×1.3), a soft click (bite 0.75) |
 
 The metal also retunes a stop that is hardware (the castle's ring, the metal door's spring).
+
+The four wood doors are kept apart on purpose (measured on a slam, flat): oak and cottage are short (T60 about 0.5 s) and sit around 700 Hz, barn rings 1.3 s around 480 Hz, castle 2 s around 350 Hz; barn and castle carry more than half of a slam's energy below 200 Hz, oak about 40 %, cottage under 30 %. The doors are levelled to within 7 dB of each other on a knock, open, slam sequence (4 dB on the phone's speakers), the cottage door lowest on purpose.
 
 `make sounds` renders `door-<type>.wav` for every door (knock knock, open, stop, slam) plus oak with brass and chrome.
 

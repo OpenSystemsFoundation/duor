@@ -487,7 +487,11 @@ func report() {
             number(results["speaker-\(door)-sequence"]?.onPhone ?? 0))
     }
     if let high = sequenceLevels.map(\.1.rms).max(), let low = sequenceLevels.map(\.1.rms).min() {
-        print("spread", number(high - low), "dB (target ≤ 6)")
+        print("spread", number(high - low), "dB (target ≤ 7: the cottage door is the quiet one on purpose)")
+    }
+    let phoneLevels = doors.compactMap { door, _ in results["speaker-\(door)-sequence"]?.onPhone }
+    if let high = phoneLevels.max(), let low = phoneLevels.min() {
+        print("spread on phone", number(high - low), "dB")
     }
 
     print(

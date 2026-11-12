@@ -13,8 +13,9 @@ nonisolated struct SwingBedProfile: Sendable {
     var rollLevel: Float = 0.018
     /// Degrees per second where both are at their nominal level.
     var referenceSpeed: Float = 200
-    /// Ring of the hinge ticks, relative to the hinge's own decay.
-    var rollDecay: Float = 0.2
+    /// Ring of the hinge ticks, relative to the hinge's own decay. Short: a knuckle rolling on
+    /// its pin is a soft tick, and one that rings on turns a fast swing into a faint note.
+    var rollDecay: Float = 0.14
 
     /// No bed at all.
     static let silent = SwingBedProfile(airLevel: 0, rollPerDegree: 0, rollLevel: 0)
@@ -89,11 +90,17 @@ nonisolated struct SwingBedVoice: Sendable {
     }
 
     private mutating func tune(hinge: ModeSet) {
+        var previous: Float = 0
         for index in hinge.indices where index < 8 {
             let mode = hinge[index]
+            // A tick this short is over before a close pair of modes could beat, so the second of
+            // a pair only doubles the first: a louder, more pitched low end, and a roll that reads
+            // as a faint note. Leave it out.
+            let isPartner = previous > 0 && mode.frequency / previous < 1.04
+            previous = mode.frequency
             roll.tune(
-                lane: index, frequency: mode.frequency, decay: mode.decay * profile.rollDecay, gain: mode.gain,
-                sampleRate: sampleRate)
+                lane: index, frequency: mode.frequency, decay: mode.decay * profile.rollDecay,
+                gain: isPartner ? 0 : mode.gain, sampleRate: sampleRate)
         }
     }
 }

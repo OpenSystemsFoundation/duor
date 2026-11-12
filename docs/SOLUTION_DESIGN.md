@@ -313,11 +313,12 @@ Each one-shot is a few strikes on the style's materials (`SoundProfile`: `panel`
 | Sound | Recipe |
 |---|---|
 | Knock | Dedicated `knock` modes: the same oak, heavily damped by the hand (7–28 ms decays, 160 Hz–1.35 kHz). 0.8–1.2 ms contact (knuckle), ±3 % pitch, plus a 0.2 ms knuckle snap ~1.7 octaves up. Mostly dry (reverb send 0.3) so it sounds close and tight, not hollow. Wood rings out in ~100 ms. **Where it lands** (`KnockSpot`): the profile's knock is the middle of the door, slightly deeper there; toward the edges the leaf is stiffer, so up to 8 % higher, shorter (0.7× decay, 0.7× contact), more snap and frame thud, with modes tilted toward the high ones. Each mode is also weighted by how much its plate mode (door ≈ 1:2) moves at that spot, so equally central spots still differ. Near the handle the latch bolt ticks faintly. **Same spot twice**: each knock lands ±3 % off target, with ±14 % per-mode gain and ±30 % snap jitter. |
-| Unlatch | Latch click, second lower click 18–30 ms later (bolt clears the strike plate), faint panel tick. The latch material is steel mounted in wood: 4–14 ms decays, so it clacks instead of ringing. |
-| Latch (gentle/firm) | Frame thump (∝ volume²) + panel + bolt riding the strike plate, then the bolt snapping in 28–45 ms later. |
-| Slam | Heavy frame hit (6 ms, longer decay) + panel + latch at 8 ms + four hinge rattles at 20–45 ms intervals, each 0.6× quieter. |
-| Open stop | Panel with 8 ms contact (rubber stopper, dull) + a small hinge tick at 35 ms. |
+| Unlatch | Two soft spring ticks of handle and spindle, a short falling scrape as the bolt draws back, its click, then the leaf letting go of its stop (a low, quiet frame thud). No speed: the handle turns at the same pace however the door then swings. Castle: its iron bolt drawn (clank, scrape, clank). Spaceship: the airlock hiss. |
+| Close (latch and slam) | One recipe, driven by the closing speed through `DoorStrength`: `force` (loudness), `hardness` (contact time and brightness), `boltDelay` (timing), `slamWeight` and `overSlam` (how much of a slam). The leaf meets its stop (frame + panel with their contact crack); the bolt touches the strike plate and rides up it (a rising scrape, noise through a gliding band that also rings the latch modes) until it snaps home 9 ms (thrown) to 80 ms (eased) later; the leaf touches a second time as it settles. Eased shut: more scrape, soft click. Firm: tight and bright. A slam is the same close and more, coming in gradually from 190 to 360°/s: air pushed ahead of the leaf (a 36 ms swell of 300–800 Hz noise before the hit), a stronger crack, the ring of frame and leaf driven into a soft overload instead of a higher peak, a rebound 70–110 ms later, hinges rattling down, more of the room. Above 340°/s the blow itself eases off and what follows grows: a second rebound, a longer rattle. The spaceship has a damper: above a firm close the speed is taken out, and what is heard is a padded thud, its seal hissing, and a magnetic catch. |
+| Open stop | Each door's own (`DoorStop`): a rubber bumper for oak and cottage, a wooden post for the barn, an iron ring on stone that dances after the hit for the castle, an actuator end-stop with the motor winding down for the spaceship, a sprung steel stop for the metal door. Then the leaf's shudder: two soft frame thumps and a hinge tick. The stop's body sits at 300 Hz to 1 kHz, where a phone speaker plays. |
 | Creak | Continuous; driven by signed hinge velocity, smoothed over 40 ms; fades out on its own when updates stop. |
+
+Loudness is set against each door's slam on the tool's phone measure (voiced, loudest 300 ms in 200 Hz to 6 kHz): knock −4 dB, firm latch −6, open stop −8, gentle latch and unlatch −12, swing sound at most −10. `EventLevels` holds the per-door balance, `SoundProfile.trim` the level between doors; `make sounds` prints the table and marks misses.
 
 Mode frequencies are chosen for a **phone speaker**, which reproduces little below ~250 Hz. Each sound's body sits around 200 Hz to 1.2 kHz, with lower modes kept for headphones.
 
@@ -352,10 +353,12 @@ Each door type is a `SoundProfile` preset (its wood, frame, creak and room) plus
 | Metal | Latch and hinges |
 |---|---|
 | Iron | Reference: dull clack |
-| Brass | Lower (×0.86), rings longer (×1.45) |
-| Chrome | Brighter (×1.22), rings longer (×1.25) |
-| Copper | Lower and softer (×0.8, ×0.95) |
-| Bronze | Lowest (×0.74), slightly longer (×1.15) |
+| Brass | Lower (×0.86), rings longer (×1.45), a slightly softer click (bite 0.8) |
+| Chrome | Brighter (×1.22), rings longer (×1.25), the hardest click (bite 1.3) |
+| Copper | Lower and dead (×0.82, ×0.8), the softest click (bite 0.6) |
+| Bronze | Lowest and bell-like (×0.72, ×1.3), a soft click (bite 0.75) |
+
+The metal also retunes a stop that is hardware (the castle's ring, the metal door's spring).
 
 `make sounds` renders `door-<type>.wav` for every door (knock knock, open, stop, slam) plus oak with brass and chrome.
 

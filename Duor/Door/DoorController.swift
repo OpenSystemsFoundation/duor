@@ -186,6 +186,9 @@ final class DoorController {
     }
 
     private func ingest(_ reading: HingeReading) {
+        // The first reading is where the door stands. Tell the synth, so a door that starts open
+        // is heard open (the scene beyond it follows the swing angle) before it first moves.
+        if !interpreter.hasStarted { sounds.setSwing(angle: reading.degrees, velocity: 0) }
         Self.logger.debug(
             "door \(reading.degrees, format: .fixed(precision: 1))° \(String(describing: reading.status))")
         for event in interpreter.ingest(reading) {

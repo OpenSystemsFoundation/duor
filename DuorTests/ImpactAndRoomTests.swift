@@ -117,7 +117,9 @@ struct GainStagingTests {
         #expect(samples.allSatisfy { $0.isFinite })
         #expect(peak(samples) < 1)
         #expect(largestStep(samples) < 0.5)
-        #expect(synth.takeMeter().limiterGain < 0.5)
+        // (A slam's ring now overloads softly by itself instead of growing, so a stack of them
+        // asks less of the limiter than it did: about 4 dB here, where it was over 6.)
+        #expect(synth.takeMeter().limiterGain < 0.75)
     }
 
     @Test func doorsAreLevelled() {

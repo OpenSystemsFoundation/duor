@@ -147,10 +147,12 @@ struct SwingSoundTests {
         let hardness = speeds.map(\.hardness)
         #expect(hardness == hardness.sorted())
         #expect(hardness.first == 0 && hardness.last == 1)
-        let latch = speeds.map(\.latchVolume)
-        #expect(latch == latch.sorted())
-        // No step at the gentle/firm boundary (90°/s).
-        #expect(abs(DoorStrength(speed: 91).latchVolume - DoorStrength(speed: 89).latchVolume) < 0.02)
+        // (`force` took over from the interim `latchVolume` and `slamVolume` when the recipes were rewritten.)
+        let force = speeds.map(\.force)
+        #expect(force == force.sorted())
+        // No step at the gentle/firm boundary (90°/s), nor at the slam threshold (260°/s).
+        #expect(abs(DoorStrength(speed: 91).force - DoorStrength(speed: 89).force) < 0.02)
+        #expect(abs(DoorStrength(speed: 261).force - DoorStrength(speed: 259).force) < 0.02)
     }
 
     @Test func fasterClosesAreLouder() {

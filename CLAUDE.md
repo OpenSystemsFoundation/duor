@@ -5,7 +5,8 @@ iPhone Duo door simulator. Design: `docs/SOLUTION_DESIGN.md`.
 ## Build and test
 
 - `make test` — builds and runs Swift Testing tests on the *iPhone Duo* simulator. Run after any logic change.
-- `make sounds` — renders every synthesized sound to `build/sounds/*.wav` and prints peak/RMS. Run after any change under `Duor/Audio/DSP`; keep peaks below 0 dBFS.
+- `make sounds` — renders every door × event × swing gesture to `build/sounds/*.wav` (flat and `speaker-` voiced) and prints the measurements: loudness relative to each door's slam against the design targets (`!` marks a miss), peaks and level into the soft clipper, door balance, creak periodicity, decay, update-rate independence and render cost. Run after any change under `Duor/Audio/DSP`; keep peaks below 0 dBFS. `make sounds BASELINE=old.json` prints before → after (each run writes `build/sounds/metrics.json`). `make bench` prints the render cost only.
+- `make audio-check` — builds `Duor/Audio/DSP` plus the pure door logic as a Swift package (`Tools/AudioCheck`, symlinks into the app) and runs their tests without Xcode. Works on Linux with a Swift 6.2+ toolchain, as does `make sounds`. A new DSP file is picked up automatically; a new test file needs a symlink in `Tools/AudioCheck/Tests/DuorTests`.
 - `make banner` — renders the App Store header and search results artwork (`Tools/RenderBanner`, compiles the scene code for macOS). Keep `Duor/Door/Scenes` free of UIKit.
 - `make lint` / `make format` — `swift format` with `.swift-format`. CI runs lint in `--strict` mode.
 

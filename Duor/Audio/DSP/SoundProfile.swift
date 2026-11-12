@@ -168,6 +168,15 @@ nonisolated struct SoundCharacter: Sendable {
     var softClose = false
     /// An airlock: a pneumatic hiss when the hatch unseals and seals (0 = none).
     var airlockHiss: Float = 0
+    /// A powered panel that slides into the wall instead of a leaf on a latch: it opens with its
+    /// locks drawing back, a rush of air and the panel running along its track, and closes into
+    /// a padded, sealed thud. (How loud its air is: `airlockHiss`.)
+    var slides = false
+    /// The motor of a powered door, heard running up as it opens and down as it shuts or reaches
+    /// its end stop: a warm tone that glides (0 = none).
+    var motor: Float = 0
+    /// Two soft notes when a powered door opens (rising) and shuts (falling). 0 = no chime.
+    var chime: Float = 0
 }
 
 extension SoundProfile {
@@ -504,8 +513,10 @@ extension SoundProfile {
         return profile
     }()
 
-    /// A spaceship hatch of thin aluminum: light, bright "dink" rings instead of wood, a quiet
-    /// servo hum instead of a creak, a damper instead of a slam, and an airlock hiss.
+    /// A starship's door of thin aluminum: light "dunk" rings instead of wood, a servo hum instead
+    /// of a creak, and a powered panel that slides: it opens with a rush of air and its motor
+    /// running up, and shuts into a padded, sealed thud instead of a slam. An original sound in
+    /// the style of film and television starships, not a copy of any one of them.
     nonisolated static let spaceship: SoundProfile = {
         var profile = SoundProfile.oakWood
         // Thin aluminum hull panel: bright, inharmonic, rings a little.
@@ -542,12 +553,13 @@ extension SoundProfile {
         ]
         profile.latch = oakWood.latch.scaled(pitch: 1.15, decay: 1.3)
         profile.hinge = oakWood.hinge.scaled(pitch: 1.25, decay: 1.2)
-        // A smooth servo hum: a steady pulse through near-harmonic resonances, no grit.
+        // A smooth servo hum: a steady pulse through near-harmonic resonances, no grit, and most
+        // of it in the two lowest: the hum of something hydraulic, not the whine of a drill.
         profile.creak.formants = [
             ModeSpec(700, 0.015, 0.6),
-            ModeSpec(1400, 0.012, 0.5),
-            ModeSpec(2100, 0.010, 0.3),
-            ModeSpec(2800, 0.008, 0.15),
+            ModeSpec(1400, 0.012, 0.4),
+            ModeSpec(2100, 0.010, 0.18),
+            ModeSpec(2800, 0.008, 0.07),
         ]
         profile.creak.body = [
             ModeSpec(350, 0.020, 0.3),
@@ -568,6 +580,10 @@ extension SoundProfile {
         profile.knockTouch = KnockTouch(contact: 0.0009...0.0013, snapLevel: 0.1, snapPitch: 2)
         profile.character.softClose = true
         profile.character.airlockHiss = 0.6
+        // A starship's door: it slides, a motor drives it, and it answers with two soft notes.
+        profile.character.slides = true
+        profile.character.motor = 1
+        profile.character.chime = 0.5
         // Thin aluminum: bright, short ticks, and a damped end stop.
         profile.contact.panel = ContactNoise(level: 0.2, frequency: 1_500, q: 1, duration: 0.003)
         profile.contact.knock = ContactNoise(level: 0.14, frequency: 3_000, q: 1, duration: 0.0025)
@@ -576,7 +592,7 @@ extension SoundProfile {
         // The actuator runs the hatch against its end stop and winds down.
         profile.stop = DoorStop(
             modes: profile.frame, contactTime: 0.005, level: 0.7, leaf: 0.3, shudder: 0.05, windDown: 0.5)
-        profile.levels = EventLevels(knock: 0.57, unlatch: 0.8, stop: 0.38, softClose: 1.3)
+        profile.levels = EventLevels(knock: 0.57, unlatch: 0.3, stop: 0.38, softClose: 1.05)
         profile.space = .airlock
         profile.trim = 1.4
         return profile

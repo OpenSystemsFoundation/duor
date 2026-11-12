@@ -207,6 +207,8 @@ private nonisolated struct SynthCore: Sendable {
     let sampleRate: Float
     var profile: SoundProfile
     var voices = InlineArray<24, ImpactVoice>(repeating: ImpactVoice())
+    /// Gliding tones: the motor of a powered door, and its chime.
+    var sweeps = InlineArray<6, SweepVoice>(repeating: SweepVoice())
     var creak: CreakVoice
     var bed: SwingBedVoice
     /// The room the door stands in, and the space beyond it that opens up with the door.
@@ -276,6 +278,9 @@ private nonisolated struct SynthCore: Sendable {
             send.update(repeating: 0)
             for index in voices.indices {
                 voices[index].render(into: output, send: send)
+            }
+            for index in sweeps.indices {
+                sweeps[index].render(into: output, send: send)
             }
             bed.render(into: output, send: send)
             creak.render(into: output, send: send)
@@ -391,6 +396,10 @@ private nonisolated struct SynthCore: Sendable {
     private mutating func unlatch() {
         let volume = profile.levels.unlatch
         let character = profile.character
+        if character.slides {
+            slideOpen(volume)
+            return
+        }
         hiss(character.airlockHiss * volume, after: 0.03, duration: 0.5)
         let released: Float
         if character.heavyBolt {
@@ -620,38 +629,119 @@ private nonisolated struct SynthCore: Sendable {
             count: 2 + Int(3 * weight + 0.5), hardness: hardness)
     }
 
+    /// A powered panel opens: its locks draw back (two padded clunks), the seal lets go with a
+    /// quick "pssht" that falls as the pressure drops, and the panel runs along its track into the
+    /// wall, a "whoo" of air that rises as it gathers speed and a "shk" as it gets there, with the
+    /// motor running up under all of it. About 0.45 s, and the same however the door then swings:
+    /// the door opens itself.
+    ///
+    /// All of the noise is band-passed and stops at about 2.6 kHz (see `ImpactVoice`), so nothing
+    /// in it is a sharp hiss.
+    private mutating func slideOpen(_ volume: Float) {
+        let character = profile.character
+        let air = character.airlockHiss * volume
+        // The locks: a soft thunk in the frame with the tick of a catch in it, and a second,
+        // lighter and a little higher, as the other side follows.
+        let second = random.value(in: 0.026...0.034)
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0.006, amplitude: 0.55 * volume, roughness: 0.1, decayScale: 0.7,
+                contact: profile.contact.frame.scaled(level: 0.6), hardness: 0.3))
+        strike(
+            ImpactSpec(
+                modes: profile.latch, contactTime: 0.0006, amplitude: 0.08 * volume, pitchScale: 0.6,
+                decayScale: 0.6, reverbSend: 0.6, contact: profile.contact.latch.scaled(level: 0.5), hardness: 0.25))
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0.005, amplitude: 0.32 * volume, roughness: 0.1, delay: second,
+                pitchScale: 1.12, decayScale: 0.6, contact: profile.contact.frame.scaled(level: 0.5), hardness: 0.3))
+        // The seal lets go: in at once, 1.5 kHz falling to 800 Hz as it dies away.
+        strike(
+            .noise(
+                ContactNoise(level: 0.62, frequency: 1_500, q: 1.1, duration: 0.19, glide: 0.55),
+                amplitude: air, delay: 0.012, reverbSend: 0.5))
+        // The panel on its track. Rising to where it is fastest, 480 Hz to 1.1 kHz, ringing the
+        // frame a little as it goes; then falling away, still rising a little, as it runs home.
+        let fastest = random.value(in: 0.2...0.23)
+        strike(
+            ImpactSpec(
+                modes: profile.frame, contactTime: 0, amplitude: air, delay: 0.04, decayScale: 0.5, reverbSend: 0.6,
+                contact: ContactNoise(
+                    level: 0.5, frequency: 480, q: 1, duration: fastest - 0.04, swell: 0.8, glide: 2.3, ring: 0.08)))
+        strike(
+            .noise(
+                ContactNoise(level: 0.5, frequency: 1_100, q: 1, duration: 0.22, glide: 1.3),
+                amplitude: air, delay: fastest, reverbSend: 0.6))
+        // The motor runs up: 230 to 540 Hz, most of it in the first 150 ms.
+        tone(
+            SweepSpec(
+                from: 230, to: 540, duration: 0.42, amplitude: 0.1 * character.motor * volume, attack: 0.03,
+                release: 0.16, delay: 0.015, harmonics: 0.3, throb: 0.25, settle: 0.7))
+        chime(character.chime * volume, rising: true, after: 0.03)
+    }
+
     /// A soft-close door can't slam: the damper takes the speed out, a seal hisses, and a magnet
     /// catches the leaf. (`strength` is what is left after the damper.)
+    ///
+    /// A powered panel (`SoundCharacter.slides`) runs the last of its way first: a short falling
+    /// rush of air into the thud, sooner when it comes in fast (30 to 90 ms), with the motor
+    /// winding down through it. Its catch is a low, padded "tk" right on the thud instead of a
+    /// click after it, and its seal fills (a hiss that rises as it fades) instead of emptying.
     private mutating func softClose(_ strength: DoorStrength) {
         let hardness = strength.hardness
+        let character = profile.character
+        let slides = character.slides
         // Under the damper loudness follows what speed is left more closely than on a free door:
         // eased shut, the hatch hardly lands.
         let force = powf(max(strength.speed, DoorStrength.softest) / 150, 1.1) * profile.levels.softClose
-        // The seal takes up, air let out as it is squeezed: most of what is heard of a soft close.
+        let air = character.airlockHiss * force
+        var home: Float = 0
+        if slides {
+            let ease = 1 - hardness
+            home = 0.03 + 0.06 * ease * ease
+            // (Brighter when it comes in faster, as `hardness` would make it, but no shorter:
+            // it has to end on the thud.)
+            strike(
+                .noise(
+                    ContactNoise(
+                        level: 0.34, frequency: 1_300 * expf(0.7 * (hardness - 0.5)), q: 1, duration: home, swell: 1,
+                        glide: 0.5),
+                    amplitude: air, reverbSend: 0.6))
+            // The motor runs down, 520 Hz to 230, through the thud and a moment past it.
+            tone(
+                SweepSpec(
+                    from: 520, to: 230, duration: home + 0.24, amplitude: 0.1 * character.motor * force, attack: 0.012,
+                    release: 0.2, harmonics: 0.3, throb: 0.25))
+        }
+        // The seal takes up: most of what is heard of a soft close.
         strike(
             .noise(
-                ContactNoise(level: 0.36, frequency: 900, q: 0.9, duration: 0.45, glide: 0.6),
-                amplitude: profile.character.airlockHiss * force, delay: 0.01, reverbSend: 0.5, hardness: hardness))
+                slides
+                    ? ContactNoise(level: 0.36, frequency: 800, q: 0.9, duration: 0.34, glide: 1.5)
+                    : ContactNoise(level: 0.36, frequency: 900, q: 0.9, duration: 0.45, glide: 0.6),
+                amplitude: air, delay: home + 0.01, reverbSend: 0.5, hardness: hardness))
         // So the hit itself is softer than the speed says: a padded thud, and the skin ringing.
         strike(
             ImpactSpec(
-                modes: profile.frame, contactTime: 0.012, amplitude: 0.4 * force, roughness: 0.05,
+                modes: profile.frame, contactTime: 0.012, amplitude: 0.4 * force, roughness: 0.05, delay: home,
                 contact: profile.contact.frame, hardness: hardness * 0.6, drive: 1))
         strike(
             ImpactSpec(
-                modes: profile.panel, contactTime: 0.005, amplitude: 0.55 * force, roughness: 0.05,
+                modes: profile.panel, contactTime: 0.005, amplitude: 0.55 * force, roughness: 0.05, delay: home,
                 decayScale: 1.3, contact: profile.contact.panel, hardness: hardness * 0.6, drive: 0.8))
         // The catch pulls the leaf the last of the way: a clean click, sooner when it came in fast.
-        let home = strength.boltDelay * 0.8
+        let caught = home + (slides ? 0.006 : strength.boltDelay * 0.8)
         strike(
             ImpactSpec(
-                modes: profile.latch, contactTime: 0.0003, amplitude: 0.18 * force, delay: home,
-                pitchScale: 1.1, decayScale: 0.5, contact: profile.contact.latch, hardness: hardness))
+                modes: profile.latch, contactTime: slides ? 0.0006 : 0.0003, amplitude: 0.18 * force, delay: caught,
+                pitchScale: slides ? 0.7 : 1.1, decayScale: 0.5, contact: profile.contact.latch,
+                hardness: hardness * (slides ? 0.6 : 1)))
         // And the damper pushes back once.
         strike(
             ImpactSpec(
                 modes: profile.frame, contactTime: 0.014, amplitude: 0.12 * force, roughness: 0.05,
-                delay: home + random.value(in: 0.05...0.07), decayScale: 0.8, hardness: hardness * 0.4))
+                delay: caught + random.value(in: 0.05...0.07), decayScale: 0.8, hardness: hardness * 0.4))
+        if slides { chime(character.chime * force, rising: false, after: home + 0.09) }
     }
 
     /// The open leaf runs into its door stop, each door's own (`DoorStop`): the stop sounds, the
@@ -705,16 +795,16 @@ private nonisolated struct SynthCore: Sendable {
                 contact: profile.contact.hinge, hardness: hardness))
 
         if stop.windDown > 0 {
-            // The actuator has nowhere left to go: its whine falls away as the motor runs down.
-            let level = stop.windDown * force
+            // The actuator has nowhere left to go: the motor runs down, 460 Hz falling to 200,
+            // and the air the panel pushed into its pocket breathes out.
+            tone(
+                SweepSpec(
+                    from: 460, to: 200, duration: 0.42, amplitude: 0.3 * stop.windDown * force, attack: 0.01,
+                    release: 0.32, delay: 0.004, harmonics: 0.3, throb: 0.25))
             strike(
                 .noise(
-                    ContactNoise(level: 0.5, frequency: 640, q: 10, duration: 0.42, glide: 0.3),
-                    amplitude: level, delay: 0.01, reverbSend: 0.6))
-            strike(
-                .noise(
-                    ContactNoise(level: 0.22, frequency: 1_280, q: 10, duration: 0.3, glide: 0.3),
-                    amplitude: level, delay: 0.01, reverbSend: 0.6))
+                    ContactNoise(level: 0.3, frequency: 850, q: 0.9, duration: 0.2, glide: 0.6),
+                    amplitude: profile.character.airlockHiss * force, delay: 0.008, reverbSend: 0.6))
         }
         rattleGlass(profile.character.glassRattle * 0.3 * force, after: 0.01, hardness: hardness)
         clatterBoards(profile.character.looseBoards * 0.3 * force, after: 0.012, count: 2, hardness: hardness)
@@ -761,6 +851,41 @@ private nonisolated struct SynthCore: Sendable {
             time += random.value(in: 0.025...0.06)
             amplitude *= 0.6
         }
+    }
+
+    /// Two soft notes a fifth apart (587 and 880 Hz), up for open and down for shut: the door
+    /// saying it heard you. Nearly pure, in gently and fading from the start, like a small bell.
+    private mutating func chime(_ level: Float, rising: Bool, after delay: Float) {
+        guard level > 0.001 else { return }
+        let low: Float = 587
+        let high: Float = 880
+        for note in 0..<2 {
+            let pitch = (note == 0) == rising ? low : high
+            tone(
+                SweepSpec(
+                    from: pitch, to: pitch, duration: note == 0 ? 0.14 : 0.24, amplitude: 0.1 * level, attack: 0.008,
+                    release: note == 0 ? 0.12 : 0.22, delay: delay + 0.09 * Float(note), harmonics: 0.06,
+                    reverbSend: 0.8))
+        }
+    }
+
+    /// Starts a tone on a free sweep voice, or steals the one with the least left to play.
+    private mutating func tone(_ spec: SweepSpec) {
+        guard abs(spec.amplitude) > 0.0005 else { return }
+        var chosen = 0
+        var leastLeft = Float.infinity
+        for index in sweeps.indices {
+            let left = sweeps[index].lifeLeft
+            if left == 0 {
+                chosen = index
+                break
+            }
+            if left < leastLeft {
+                leastLeft = left
+                chosen = index
+            }
+        }
+        sweeps[chosen].start(spec, sampleRate: sampleRate)
     }
 
     /// Starts an impact on a free voice, or steals the one furthest into its decay.

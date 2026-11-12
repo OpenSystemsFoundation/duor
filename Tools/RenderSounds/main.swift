@@ -383,9 +383,10 @@ func harshnessTargets(_ event: String, _ profile: SoundProfile) -> (centroid: Fl
     let hatch = profile.character.softClose
     let air: Float = hatch || profile.character.glassRattle > 0 ? 6 : 3
     if closes.contains(event) { return hatch ? (1_500, 30, air) : (700, 8, air) }
+    // (A hatch's rush of air and motor stay as low as its closes.)
     switch event {
-    case "unlatch": return (nil, 15, air)
-    case "open-stop": return (nil, 10, air)
+    case "unlatch": return (hatch ? 1_500 : nil, 15, air)
+    case "open-stop": return (hatch ? 1_500 : nil, 10, air)
     default: return (nil, nil, air)
     }
 }
@@ -393,7 +394,9 @@ func harshnessTargets(_ event: String, _ profile: SoundProfile) -> (centroid: Fl
 func reportHarshness() {
     print("\n== Harshness, first 200 ms: centroid Hz / share in 2–5 kHz % / above 5 kHz %, flat, then voiced")
     print("   (flat targets: closes about 700 Hz or lower and ≤ 8 %, a hatch on a damper 1500 Hz and ≤ 30 %;")
-    print("    unlatch ≤ 15 %; open stop ≤ 10 %; above 5 kHz ≤ 3 %, with glass or a hatch ≤ 6 %;")
+    print(
+        "    unlatch ≤ 15 %; open stop ≤ 10 % (a hatch's also 1500 Hz); above 5 kHz ≤ 3 %, with glass or a hatch ≤ 6 %;"
+    )
     print("    ! marks a miss, for the centroid by more than 5 %)")
     for prefix in ["", "speaker-"] {
         print(pad(prefix.isEmpty ? "flat" : "voiced", 10), events.map { pad($0.0, 19) }.joined())
@@ -419,7 +422,8 @@ func reportHarshness() {
 
 func report() {
     print("\n== Loudness on the phone measure (voiced), relative to the door's slam; target in brackets")
-    print("   (a soft-close door cannot slam: its firm close is the reference, marked ref)")
+    print("   (a soft-close door cannot slam: its firm close is the reference, marked ref;")
+    print("    a door that slides open by itself has its unlatch at -6: the opening is its main sound)")
     print(pad("door", 10), events.map { pad($0.0, 17) }.joined(), pad("swing-slow", 17), pad("swing-normal", 17))
     for (door, profile) in doors {
         let reference = profile.character.softClose ? "latch-firm" : "slam"
@@ -435,7 +439,9 @@ func report() {
             }
             if name == reference {
                 row += pad(number(relative, 6) + " ref \(Int(slam.rounded()))", 17)
-            } else if let (target, kind) = loudnessTargets[name] {
+            } else if let (usual, kind) = loudnessTargets[name] {
+                // A door that slides open by itself is heard mostly as it opens.
+                let target = name == "unlatch" && profile.character.slides ? -6 : usual
                 let miss = kind == "≤" ? relative > target + 0.5 : abs(relative - target) > 3
                 row += pad(number(relative, 6) + " (\(Int(target)))\(miss ? "!" : " ")", 17)
             } else {
@@ -607,8 +613,10 @@ func compare(with path: String) throws {
 
 /// Seconds of CPU per second of audio, in percent of one core, for a busy and a quiet case.
 func benchmark() {
-    func cost(_ label: String, seconds: Float = 20, setup: (DoorSynth, Int) -> Void) {
-        let synth = DoorSynth(sampleRate: sampleRate, profile: .castle, seed: 3, speakerVoicing: true)
+    func cost(
+        _ label: String, seconds: Float = 20, profile: SoundProfile = .castle, setup: (DoorSynth, Int) -> Void
+    ) {
+        let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 3, speakerVoicing: true)
         var buffer = [Float](repeating: 0, count: blockSize)
         let blocks = Int(seconds * sampleRate) / blockSize
         let start = DispatchTime.now().uptimeNanoseconds
@@ -628,6 +636,18 @@ func benchmark() {
     cost("worst case: every voice busy + swinging") { synth, block in
         if block % 8 == 0 {
             for _ in 0..<8 { synth.play(.slam, speed: hardSlamSpeed) }
+        }
+        let t = Float(block * blockSize) / sampleRate
+        synth.setSwingForTool(angle: 90 + 60 * sin(t), velocity: 120 * cos(t))
+    }
+    // The spaceship: its servo hum, and every motor tone and chime busy on top of the voices.
+    cost("worst case, spaceship: + motor tones", profile: .spaceship) { synth, block in
+        if block % 8 == 0 {
+            for _ in 0..<3 {
+                synth.play(.unlatch)
+                synth.play(.slam, speed: hardSlamSpeed)
+                synth.play(.openStop, speed: 400)
+            }
         }
         let t = Float(block * blockSize) / sampleRate
         synth.setSwingForTool(angle: 90 + 60 * sin(t), velocity: 120 * cos(t))

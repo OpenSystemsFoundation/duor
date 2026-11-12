@@ -357,6 +357,8 @@ struct RecipeTests {
             #expect(unlatch.presence < 0.15 && unlatch.air < airLimit, "\(door) unlatch: \(unlatch)")
             let stop = onset(play(.openStop, speed: 120, on: profile, seed: seed).samples)
             #expect(stop.presence < 0.1 && stop.air < airLimit, "\(door) open stop: \(stop)")
+            // The hatch's rush of air and its motor stay as low as its closes do.
+            if hatch { #expect(unlatch.centroid < 1_500 && stop.centroid < 1_500, "\(unlatch), \(stop)") }
             let knock = onset(play(.knock, on: profile, seed: seed).samples)
             #expect(knock.presence < 0.03 && knock.air < 0.03, "\(door) knock: \(knock)")
         }
@@ -370,7 +372,8 @@ struct RecipeTests {
 
     /// The design's loudness targets on the phone measure, voiced, against the door's slam:
     /// knock -4 dB, firm latch -6, open stop -8, gentle latch and unlatch -12, and everything
-    /// within 14 dB. A soft-close door has no slam: its firm close is the reference.
+    /// within 14 dB. A soft-close door has no slam: its firm close is the reference. A door that
+    /// slides open by itself is heard mostly as it opens: its unlatch is at -6.
     @Test(arguments: ["oak", "pine", "barn", "castle", "spaceship", "steel"])
     func soundsSitWhereTheDesignPutsThemAgainstTheSlam(_ door: String) {
         let profile = doors[door]!
@@ -382,7 +385,8 @@ struct RecipeTests {
         let reference = soft ? level(.latch, 150) : level(.slam, 320)
         var targets: [(String, Float, Float)] = [
             ("knock", level(.knock, 150), -4), ("open stop", level(.openStop, 120), -8),
-            ("gentle latch", level(.latch, 50), -12), ("unlatch", level(.unlatch, 60), -12),
+            ("gentle latch", level(.latch, 50), -12),
+            ("unlatch", level(.unlatch, 60), profile.character.slides ? -6 : -12),
         ]
         if !soft { targets.append(("firm latch", level(.latch, 150), -6)) }
         for (name, measured, target) in targets {
@@ -530,6 +534,244 @@ struct RecipeTests {
                     #expect(tail < 0.002, "\(name) \(metal) \(sound) still ringing")
                 }
             }
+        }
+    }
+}
+
+/// The spaceship's door: a powered panel that slides (`SoundCharacter.slides`), with a motor
+/// (`SweepVoice`) and a chime.
+@Suite("Sliding door")
+struct SlidingDoorTests {
+    /// The door without its room, and with only some of its layers.
+    private func hatch(air: Bool = true, motor: Bool = true, chime: Bool = true) -> SoundProfile {
+        var profile = SoundProfile.spaceship
+        profile.room = 0
+        if !air { profile.character.airlockHiss = 0 }
+        if !motor { profile.character.motor = 0 }
+        if !chime { profile.character.chime = 0 }
+        return profile
+    }
+
+    /// Pitch in Hz from the zero crossings of a stretch of a tone.
+    private func pitch(_ samples: ArraySlice<Float>) -> Float {
+        var lowPass = Biquad(.lowPass, frequency: 900, q: 0.707, sampleRate: sampleRate)
+        var highPass = Biquad(.highPass, frequency: 150, q: 0.707, sampleRate: sampleRate)
+        let smooth = samples.map { highPass.process(lowPass.process($0)) }
+        var crossings = 0
+        for index in 1..<smooth.count where (smooth[index - 1] < 0) != (smooth[index] < 0) { crossings += 1 }
+        return Float(crossings) * sampleRate / Float(2 * smooth.count)
+    }
+
+    private func slice(_ samples: [Float], _ from: Float, _ to: Float) -> ArraySlice<Float> {
+        samples[Int(from * sampleRate)..<Int(to * sampleRate)]
+    }
+
+    @Test func onlyTheSpaceshipSlides() {
+        for (name, profile) in doors {
+            let character = profile.character
+            #expect(character.slides == (name == "spaceship"), "\(name)")
+            #expect((character.motor > 0) == (name == "spaceship"), "\(name)")
+            #expect((character.chime > 0) == (name == "spaceship"), "\(name)")
+        }
+    }
+
+    @Test func everySoundIsBoundedAndOverSoon() {
+        let sounds: [(DoorSound, Float)] = [
+            (.knock, 150), (.unlatch, 60), (.latch, 20), (.latch, 150), (.slam, 320), (.slam, 1_500),
+            (.openStop, 40), (.openStop, 400),
+        ]
+        for (sound, speed) in sounds {
+            for voiced in [false, true] {
+                let played = play(sound, speed: speed, on: .spaceship, seed: 7, voiced: voiced, seconds: 2)
+                #expect(played.samples.allSatisfy { $0.isFinite && abs($0) < 0.999 }, "\(sound) at \(speed)")
+                #expect(played.meter.mixPeak < 1.12, "\(sound) at \(speed): \(played.meter.mixPeak)")
+                // Decaying: next to nothing is left after 0.7 s, and silence after 1.5 s.
+                let late = energy(played.samples[Int(0.7 * sampleRate)...]) / energy(played.samples)
+                #expect(late < 0.001, "\(sound) at \(speed): \(late)")
+                #expect(played.samples.suffix(Int(0.5 * sampleRate)).allSatisfy { abs($0) < 1e-4 })
+            }
+        }
+        // The same take twice is the same samples.
+        #expect(
+            play(.unlatch, on: .spaceship, seed: 9).samples == play(.unlatch, on: .spaceship, seed: 9).samples)
+    }
+
+    /// The opening is one gesture of about half a second, not a click: still sounding at 0.3 s,
+    /// over by 0.6 s, with nothing in it that jumps out (its peak, the locks, is within 18 dB of its
+    /// level; a click on its own would be 30 dB over).
+    @Test func theOpeningIsAWhooshOfHalfASecond() {
+        for seed: UInt32 in [42, 1, 2] {
+            let samples = play(.unlatch, on: hatch(), seed: seed).samples
+            let whole = energy(samples)
+            #expect(energy(slice(samples, 0.2, 0.4)) > whole * 0.25, "seed \(seed)")
+            #expect(energy(samples[Int(0.6 * sampleRate)...]) < whole * 0.001, "seed \(seed)")
+            let peak = samples.reduce(0) { max($0, abs($1)) }
+            let level = (energy(slice(samples, 0, 0.4)) / (0.4 * sampleRate)).squareRoot()
+            #expect(peak < level * 8, "seed \(seed): crest \(peak / level)")
+        }
+    }
+
+    @Test func theOpeningRisesInItsAirAndItsMotor() {
+        // The motor alone runs up: 230 Hz toward 540.
+        let motor = play(.unlatch, on: hatch(air: false, chime: false)).samples
+        let early = pitch(slice(motor, 0.06, 0.1))
+        let late = pitch(slice(motor, 0.25, 0.35))
+        #expect(late > early * 1.25, "\(early) Hz, then \(late) Hz")
+        #expect((200...420).contains(early) && (430...600).contains(late), "\(early) Hz, then \(late) Hz")
+        // The air alone: the panel on its track rises (after the seal's falling "pssht").
+        for seed: UInt32 in [42, 1, 2] {
+            let air = play(.unlatch, on: hatch(motor: false, chime: false), seed: seed).samples
+            let slow = centroid(Array(slice(air, 0.12, 0.17)))
+            let fast = centroid(Array(slice(air, 0.2, 0.26)))
+            #expect(fast > slow * 1.1, "seed \(seed): \(slow) Hz, then \(fast) Hz")
+            // And it is louder where the panel is fastest than where it sets off.
+            #expect(energy(slice(air, 0.18, 0.24)) > energy(slice(air, 0.09, 0.15)) * 2)
+        }
+    }
+
+    @Test func theClosingFallsAndLandsSoonerWhenItComesInFaster() {
+        // The motor alone runs down through the thud.
+        let motor = play(.latch, speed: 150, on: hatch(air: false, chime: false))
+        var body = motor.samples
+        // (Take the thud out of the way: it is over in 0.1 s, the motor is not.)
+        let early = pitch(slice(body, 0.0, 0.03))
+        let late = pitch(slice(body, 0.16, 0.22))
+        #expect(early > late * 1.3, "\(early) Hz, then \(late) Hz")
+        // The thud: the loudest moment, sooner for a harder close.
+        func landing(_ speed: Float) -> Float {
+            body = play(.latch, speed: speed, on: hatch(motor: false, chime: false)).samples
+            let peak = body.reduce(0) { max($0, abs($1)) }
+            return Float(body.firstIndex { abs($0) == peak }!) / sampleRate
+        }
+        let eased = landing(25)
+        let firm = landing(150)
+        #expect(eased > firm + 0.015, "eased \(eased) s, firm \(firm) s")
+        #expect(eased < 0.12 && firm < 0.07)
+    }
+
+    @Test func theMotorWindsDownAtTheEndStop() {
+        let samples = play(.openStop, speed: 120, on: hatch(air: false)).samples
+        let early = pitch(slice(samples, 0.06, 0.1))
+        let late = pitch(slice(samples, 0.24, 0.32))
+        #expect(early > late * 1.25, "\(early) Hz, then \(late) Hz")
+    }
+
+    /// The chime is a field of the profile: at 0 there is none, and nothing else changes.
+    @Test func theChimeIsQuietAndCanBeTurnedOff() {
+        for sound in [DoorSound.unlatch, .latch] {
+            let with = play(sound, on: hatch()).samples
+            let without = play(sound, on: hatch(chime: false)).samples
+            let chime = zip(with, without).map { $0 - $1 }
+            #expect(energy(chime) > 0, "\(sound)")
+            // Subtle: at least 10 dB under the rest of the sound.
+            #expect(energy(chime) < energy(without) * 0.1, "\(sound): \(energy(chime) / energy(without))")
+            // Two notes, 587 and 880 Hz: nearly all of it is under 1.5 kHz. (The rest is what the
+            // soft clipper at the end of the chain makes of two sounds at once.)
+            var highPass = Biquad(.highPass, frequency: 1_500, q: 0.707, sampleRate: sampleRate)
+            let above = energy(chime.map { highPass.process($0) }) / energy(chime)
+            #expect(above < 0.15, "\(sound): \(above)")
+        }
+    }
+}
+
+/// `SweepVoice`: a tone that glides.
+@Suite("Sweeps")
+struct SweepTests {
+    private func play(_ spec: SweepSpec, seconds: Float = 1, then next: SweepSpec? = nil, at: Float = 0) -> [Float] {
+        var voice = SweepVoice()
+        voice.start(spec, sampleRate: sampleRate)
+        var output = [Float](repeating: 0, count: Int(seconds * sampleRate))
+        var send = output
+        let split = Int(at * sampleRate)
+        output.withUnsafeMutableBufferPointer { out in
+            send.withUnsafeMutableBufferPointer { send in
+                if let next {
+                    voice.render(
+                        into: UnsafeMutableBufferPointer(rebasing: out[..<split]),
+                        send: UnsafeMutableBufferPointer(rebasing: send[..<split]))
+                    voice.start(next, sampleRate: sampleRate)
+                }
+                var start = next == nil ? 0 : split
+                while start < out.count {
+                    let end = min(start + 256, out.count)
+                    voice.render(
+                        into: UnsafeMutableBufferPointer(rebasing: out[start..<end]),
+                        send: UnsafeMutableBufferPointer(rebasing: send[start..<end]))
+                    start = end
+                }
+            }
+        }
+        return output
+    }
+
+    private func crossings(_ samples: ArraySlice<Float>) -> Int {
+        var count = 0
+        for index in (samples.startIndex + 1)..<samples.endIndex
+        where (samples[index - 1] < 0) != (samples[index] < 0) { count += 1 }
+        return count
+    }
+
+    private func largestStep(_ samples: [Float]) -> Float {
+        var step: Float = 0
+        for index in 1..<samples.count { step = max(step, abs(samples[index] - samples[index - 1])) }
+        return step
+    }
+
+    @Test func aSweepGlidesFadesInAndOutAndEndsOnTime() {
+        let spec = SweepSpec(from: 200, to: 800, duration: 0.4, amplitude: 0.5, harmonics: 0)
+        let samples = play(spec)
+        let end = Int(0.4 * sampleRate)
+        // Its pitch: 200 Hz at the start, 800 at the end, and 400 half way (an even glide).
+        let tenth = Int(0.02 * sampleRate)
+        #expect((6...10).contains(crossings(samples[..<tenth])))
+        #expect((14...18).contains(crossings(samples[(end / 2 - tenth / 2)..<(end / 2 + tenth / 2)])))
+        #expect((27...33).contains(crossings(samples[(end - tenth)..<end])))
+        // Never louder than asked, in and out without a step, and nothing after its time.
+        #expect(samples.allSatisfy { abs($0) <= 0.5 })
+        #expect(samples.reduce(0) { max($0, abs($1)) } > 0.45)
+        #expect(abs(samples[0]) < 0.001 && abs(samples[end - 1]) < 0.001)
+        #expect(samples[end...].allSatisfy { $0 == 0 })
+        // The same twice.
+        #expect(play(spec) == samples)
+        // Settling: most of the way early on.
+        var settling = spec
+        settling.settle = 1
+        let settled = play(settling)
+        #expect(crossings(settled[(end / 2 - tenth / 2)..<(end / 2 + tenth / 2)]) > 24)
+    }
+
+    @Test func overtonesAndThrobStayInBounds() {
+        let samples = play(SweepSpec(from: 300, to: 300, duration: 0.3, amplitude: 1, harmonics: 0.3, throb: 0.5))
+        #expect(samples.allSatisfy { abs($0) <= 1 + 0.3 + 0.09 })
+        // The throb: the level dips 31 times a second.
+        let window = Int(sampleRate / SweepVoice.throbRate)
+        let from = Int(0.1 * sampleRate)
+        let levels = (0..<(window / 48)).map { energy(samples[(from + $0 * 48)..<(from + $0 * 48 + 160)]) }
+        #expect(levels.max()! > levels.min()! * 1.5)
+    }
+
+    @Test func aStolenSweepFadesInsteadOfClicking() {
+        let first = SweepSpec(from: 500, to: 500, duration: 0.5, amplitude: 0.8, harmonics: 0)
+        let second = SweepSpec(from: 300, to: 300, duration: 0.2, amplitude: 0.1, harmonics: 0)
+        let alone = largestStep(play(first))
+        let stolen = play(first, then: second, at: 0.1003)
+        // No step larger than the tone's own from one sample to the next.
+        #expect(largestStep(stolen) < alone * 1.3, "\(largestStep(stolen)) against \(alone)")
+        #expect(stolen.allSatisfy { abs($0) <= 0.9 })
+    }
+
+    @Test func nonsenseStaysFiniteAndBounded() {
+        let wild: [Float] = [.nan, .infinity, -.infinity, -1, 0, 1e-9, 0.5, 3, 1e9]
+        var random = NoiseSource(seed: 23)
+        func pick() -> Float { wild[Int(random.nextUInt() % UInt32(wild.count))] }
+        for _ in 0..<80 {
+            let spec = SweepSpec(
+                from: pick(), to: pick(), duration: pick(), amplitude: pick(), attack: pick(), release: pick(),
+                delay: pick(), harmonics: pick(), throb: pick(), settle: pick(), reverbSend: pick())
+            let samples = play(spec, seconds: 4.5)
+            #expect(samples.allSatisfy { $0.isFinite && abs($0) <= 12 })
+            // Never longer than the longest tone after the longest wait.
+            #expect(samples.suffix(Int(0.4 * sampleRate)).allSatisfy { $0 == 0 })
         }
     }
 }

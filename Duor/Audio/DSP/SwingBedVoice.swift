@@ -6,15 +6,15 @@ nonisolated struct SwingBedProfile: Sendable {
     /// Centre (Hz) and Q of the band the moving air is heard in. Heavier doors sit lower.
     var airFrequency: Float = 650
     var airQ: Float = 0.7
-    /// Air level at `referenceSpeed`. It grows with the square of the speed.
-    var airLevel: Float = 0.035
+    /// Air level at `referenceSpeed`. It grows with the square of the speed and levels off above it.
+    var airLevel: Float = 0.028
     /// Soft ticks of the hinge modes per degree of travel, and their level at `referenceSpeed`.
     var rollPerDegree: Float = 0.35
     var rollLevel: Float = 0.018
     /// Degrees per second where both are at their nominal level.
     var referenceSpeed: Float = 200
     /// Ring of the hinge ticks, relative to the hinge's own decay.
-    var rollDecay: Float = 0.35
+    var rollDecay: Float = 0.2
 
     /// No bed at all.
     static let silent = SwingBedProfile(airLevel: 0, rollPerDegree: 0, rollLevel: 0)
@@ -54,7 +54,7 @@ nonisolated struct SwingBedVoice: Sendable {
 
     /// Signed hinge velocity in degrees per second.
     mutating func setTarget(velocity: Float) {
-        targetSpeed = abs(velocity)
+        targetSpeed = velocity.isFinite ? min(abs(velocity), 1_500) : 0
     }
 
     /// Adds the bed to `output` and all of it to the reverb `send`: the room is heard while the door moves.
@@ -74,7 +74,10 @@ nonisolated struct SwingBedVoice: Sendable {
         for frame in output.indices {
             speed += (targetSpeed - speed) * glide
             let relative = min(speed / reference, 1.6)
-            let air = airBand2.process(airBand.process(noise.bipolar())) * profile.airLevel * relative * relative * 4
+            // Speed squared while the door moves slowly, levelling off on a fast swing: the air is
+            // there on a normal swing and never takes over on a hard one.
+            let square = relative * relative
+            let air = airBand2.process(airBand.process(noise.bipolar())) * profile.airLevel * 8 * square / (1 + square)
             var tick: Float = 0
             if noise.unit() < tickChance * speed {
                 tick = profile.rollLevel * min(relative, 1) * noise.value(in: 0.4...1)

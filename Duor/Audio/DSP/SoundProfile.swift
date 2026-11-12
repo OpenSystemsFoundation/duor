@@ -94,28 +94,32 @@ extension SoundProfile {
             ModeSpec(6100, 0.012, 0.20),
         ],
         creak: CreakProfile(
+            // The pin scraping in its knuckle: broad and quiet, so no slip sounds like a voice.
             formants: [
-                ModeSpec(720, 0.006, 0.50),
-                ModeSpec(1380, 0.005, 1.00),
-                ModeSpec(2250, 0.004, 0.70),
-                ModeSpec(3600, 0.003, 0.35),
+                ModeSpec(1170, 0.0050, 0.53),
+                ModeSpec(1562, 0.0040, 0.46),
+                ModeSpec(2448, 0.0030, 0.42),
+                ModeSpec(3102, 0.0025, 0.28),
             ],
+            // The leaf's own modes, ringing longer than the scrape: the creak's pitch is the door's.
+            // Deliberately not in simple ratios (the panel's 205 : 320 : 480 are close to 2 : 3),
+            // or a slip rings as a chord with a clear note. Heavily damped, as dry wood is.
             body: [
-                ModeSpec(205, 0.050, 0.40),
-                ModeSpec(320, 0.040, 0.50),
-                ModeSpec(480, 0.030, 0.30),
+                ModeSpec(224, 0.0060, 0.40),
+                ModeSpec(290, 0.0060, 0.44),
+                ModeSpec(431, 0.0055, 0.42),
+                ModeSpec(783, 0.0050, 0.32),
             ],
-            onsetSpeed: 3,
-            fullSpeed: 45,
-            baseRate: 40,
-            ratePerDegree: 1.6,
-            maxRate: 520,
-            wander: 0.18,
-            jitter: 0.035,
+            stickDistance: 1.5,
+            easeSpeed: 60,
+            slideSpeed: 80,
+            slideFullSpeed: 220,
+            pulse: 0.0004...0.0014,
+            roughness: 0.5,
+            scrape: 2.5,
+            scrapeDecay: 0.014,
             hiss: 0.02,
-            brighten: 0.12,
-            closingPitch: 0.94,
-            level: 0.2,
+            level: 0.031,
             // Two modest tight spots.
             friction: FrictionMap(
                 recipe: .init(count: 2, width: 5...9, strength: 0.45...0.65, floor: 0.12), seed: 0x0A4)
@@ -190,16 +194,26 @@ extension SoundProfile {
         var profile = SoundProfile.oakWood
         profile.panel = oakWood.panel.scaled(pitch: 1.3, decay: 1.15)
         profile.frame = oakWood.frame.scaled(pitch: 1.2, decay: 0.9)
-        profile.creak.formants = oakWood.creak.formants.scaled(pitch: 1.15)
-        profile.creak.body = oakWood.creak.body.scaled(pitch: 1.3)
-        profile.creak.baseRate = 55
-        profile.creak.ratePerDegree = 1.9
-        profile.creak.level = 0.16
+        profile.creak.formants = [
+            ModeSpec(1489, 0.0050, 0.46),
+            ModeSpec(1918, 0.0040, 0.47),
+            ModeSpec(2624, 0.0030, 0.37),
+            ModeSpec(3501, 0.0025, 0.21),
+        ]
+        profile.creak.body = [
+            ModeSpec(235, 0.0050, 0.45),
+            ModeSpec(375, 0.0050, 0.45),
+            ModeSpec(679, 0.0047, 0.44),
+            ModeSpec(969, 0.0043, 0.44),
+        ]
+        // A light leaf on small hinges: finer, quicker slips.
+        profile.creak.stickDistance = 1.0
+        profile.creak.level = 0.06
         // One light spot.
         profile.creak.friction = FrictionMap(
             recipe: .init(count: 1, width: 5...8, strength: 0.3...0.45, floor: 0.08), seed: 0xC07)
         profile.bed.airFrequency = 750
-        profile.bed.airLevel = 0.03
+        profile.bed.airLevel = 0.025
         profile.room = 0.1
         profile.character.glassRattle = 0.6
         // A crisp knuckle knock: the reference wood's knock with its sharp snap.
@@ -215,19 +229,37 @@ extension SoundProfile {
         profile.knock = oakWood.knock.scaled(pitch: 0.8, decay: 1.3, gain: 1.1)
         profile.frame = oakWood.frame.scaled(pitch: 0.8, decay: 1.3)
         profile.hinge = oakWood.hinge.scaled(pitch: 0.85, decay: 1.3)
-        profile.creak.formants = oakWood.creak.formants.scaled(pitch: 0.8)
-        profile.creak.body = oakWood.creak.body.scaled(pitch: 0.8, decay: 1.4, gain: 1.6)
-        profile.creak.baseRate = 26
-        profile.creak.ratePerDegree = 1.1
-        profile.creak.wander = 0.26
-        profile.creak.jitter = 0.06
-        profile.creak.level = 0.26
+        profile.creak.formants = [
+            ModeSpec(851, 0.0050, 0.44),
+            ModeSpec(1569, 0.0040, 0.44),
+            ModeSpec(2222, 0.0030, 0.33),
+            ModeSpec(2541, 0.0025, 0.25),
+        ]
+        profile.creak.body = [
+            ModeSpec(155, 0.0065, 0.45),
+            ModeSpec(234, 0.0065, 0.45),
+            ModeSpec(455, 0.0060, 0.40),
+            ModeSpec(524, 0.0055, 0.41),
+        ]
+        // Big strap hinges on a heavy leaf: slow, heavy slips that go on to a higher speed.
+        profile.creak.stickDistance = 2.4
+        profile.creak.easeSpeed = 50
+        profile.creak.slideSpeed = 90
+        profile.creak.slideFullSpeed = 240
+        profile.creak.pulse = 0.0006...0.002
+        profile.creak.scrapeDecay = 0.018
+        profile.creak.rasp = 44
+        profile.creak.raspFrequency = 2_600
+        profile.creak.lowCut = 140
+        profile.creak.hiss = 0.006
+        profile.creak.level = 0.028
         // Wide, strong spots.
         profile.creak.friction = FrictionMap(
             recipe: .init(count: 3, width: 10...16, strength: 0.6...0.9, floor: 0.25), seed: 0xBA2)
         profile.bed.airFrequency = 480
-        profile.bed.airLevel = 0.05
-        profile.bed.rollLevel = 0.025
+        profile.bed.airQ = 0.5
+        profile.bed.airLevel = 0.04
+        profile.bed.rollLevel = 0.018
         profile.room = 0.2
         profile.character.looseBoards = 0.7
         return profile
@@ -241,18 +273,37 @@ extension SoundProfile {
         profile.knock = oakWood.knock.scaled(pitch: 0.58, decay: 2, gain: 1.5)
         profile.frame = oakWood.frame.scaled(pitch: 0.6, decay: 1.8)
         profile.hinge = oakWood.hinge.scaled(pitch: 0.7, decay: 1.6)
-        profile.creak.formants = oakWood.creak.formants.scaled(pitch: 0.65)
-        profile.creak.body = oakWood.creak.body.scaled(pitch: 0.65, decay: 1.6, gain: 1.8)
-        profile.creak.baseRate = 18
-        profile.creak.ratePerDegree = 0.8
-        profile.creak.wander = 0.3
-        profile.creak.jitter = 0.07
-        profile.creak.level = 0.3
+        profile.creak.formants = [
+            ModeSpec(917, 0.0050, 0.52),
+            ModeSpec(1229, 0.0040, 0.44),
+            ModeSpec(1766, 0.0030, 0.34),
+            ModeSpec(2495, 0.0025, 0.21),
+        ]
+        profile.creak.body = [
+            ModeSpec(141, 0.0055, 0.36),
+            ModeSpec(207, 0.0055, 0.38),
+            ModeSpec(398, 0.0050, 0.38),
+            ModeSpec(473, 0.0050, 0.32),
+        ]
+        // Iron pintles carrying a massive leaf: the slowest, deepest groan.
+        profile.creak.stickDistance = 3.2
+        profile.creak.easeSpeed = 45
+        profile.creak.slideSpeed = 90
+        profile.creak.slideFullSpeed = 240
+        profile.creak.pulse = 0.0006...0.0018
+        profile.creak.scrape = 3
+        profile.creak.scrapeDecay = 0.020
+        profile.creak.rasp = 56
+        profile.creak.raspFrequency = 2_600
+        profile.creak.lowCut = 120
+        profile.creak.hiss = 0.006
+        profile.creak.level = 0.027
         profile.creak.friction = FrictionMap(
             recipe: .init(count: 3, width: 12...18, strength: 0.7...0.95, floor: 0.3), seed: 0xCA5)
-        profile.bed.airFrequency = 380
-        profile.bed.airLevel = 0.06
-        profile.bed.rollLevel = 0.03
+        profile.bed.airFrequency = 420
+        profile.bed.airQ = 0.5
+        profile.bed.airLevel = 0.048
+        profile.bed.rollLevel = 0.02
         profile.bed.rollPerDegree = 0.25
         profile.room = 0.32
         profile.character.heavyBolt = true
@@ -294,30 +345,26 @@ extension SoundProfile {
         profile.hinge = oakWood.hinge.scaled(pitch: 1.25, decay: 1.2)
         // A smooth servo hum: a steady pulse through near-harmonic resonances, no grit.
         profile.creak.formants = [
-            ModeSpec(700, 0.03, 0.6),
-            ModeSpec(1400, 0.025, 0.5),
-            ModeSpec(2100, 0.02, 0.3),
-            ModeSpec(2800, 0.015, 0.15),
+            ModeSpec(700, 0.015, 0.6),
+            ModeSpec(1400, 0.012, 0.5),
+            ModeSpec(2100, 0.010, 0.3),
+            ModeSpec(2800, 0.008, 0.15),
         ]
         profile.creak.body = [
-            ModeSpec(350, 0.04, 0.3),
-            ModeSpec(700, 0.03, 0.2),
-            ModeSpec(1050, 0.02, 0.1),
+            ModeSpec(350, 0.020, 0.3),
+            ModeSpec(700, 0.015, 0.2),
+            ModeSpec(1050, 0.010, 0.1),
+            ModeSpec(1400, 0.02, 0),
         ]
-        profile.creak.baseRate = 150
-        profile.creak.ratePerDegree = 1.8
-        profile.creak.maxRate = 600
-        profile.creak.wander = 0.015
-        profile.creak.jitter = 0.002
+        profile.creak.servo = ServoHum(baseRate: 150, ratePerDegree: 1.8, maxRate: 600)
         profile.creak.hiss = 0
-        profile.creak.brighten = 0.08
         profile.creak.closingPitch = 0.92
-        profile.creak.level = 0.06
+        profile.creak.level = 0.006
         // The servo hums the whole way: no tight spots. A light hatch moves little air.
         profile.creak.friction = .uniform(1)
         profile.bed.airFrequency = 900
-        profile.bed.airLevel = 0.02
-        profile.bed.rollLevel = 0.008
+        profile.bed.airLevel = 0.008
+        profile.bed.rollLevel = 0.006
         profile.room = 0.14
         profile.knockTouch = KnockTouch(contact: 0.0009...0.0013, snapLevel: 0.1, snapPitch: 2)
         profile.character.softClose = true
@@ -358,30 +405,32 @@ extension SoundProfile {
         // A lower, breathier squeal: wider resonances and a rougher stick-slip, so it groans
         // rather than pierces.
         profile.creak.formants = [
-            ModeSpec(1050, 0.008, 0.9),
-            ModeSpec(1750, 0.007, 1.0),
-            ModeSpec(2600, 0.006, 0.5),
-            ModeSpec(3600, 0.005, 0.2),
+            ModeSpec(1050, 0.006, 0.6),
+            ModeSpec(1750, 0.005, 0.6),
+            ModeSpec(2600, 0.004, 0.35),
+            ModeSpec(3600, 0.003, 0.15),
         ]
         profile.creak.body = [
-            ModeSpec(420, 0.06, 0.3),
-            ModeSpec(690, 0.05, 0.3),
-            ModeSpec(1150, 0.04, 0.2),
+            ModeSpec(420, 0.030, 0.7),
+            ModeSpec(690, 0.025, 0.6),
+            ModeSpec(1150, 0.020, 0.2),
+            ModeSpec(1720, 0.015, 0.1),
         ]
-        profile.creak.baseRate = 70
-        profile.creak.ratePerDegree = 1.8
-        profile.creak.maxRate = 480
-        profile.creak.wander = 0.12
-        profile.creak.jitter = 0.04
+        // Steel on steel sticks in tiny steps, fast enough to fall in step with the plate's lowest
+        // modes: that is the squeal. Less dry rasp than wood, and the plate rings on.
+        profile.creak.stickDistance = 0.2
+        profile.creak.squeal = 0.65
+        profile.creak.scrape = 1
+        profile.creak.rasp = 10
+        profile.creak.raspFrequency = 3_200
+        profile.creak.lowCut = 250
         profile.creak.hiss = 0.02
-        profile.creak.brighten = 0.08
-        profile.creak.level = 0.11
-        profile.creak.fullSpeed = 40
+        profile.creak.level = 0.024
         // One spot where it squeals.
         profile.creak.friction = FrictionMap(
             recipe: .init(count: 1, width: 6...10, strength: 0.7...0.9, floor: 0.1), seed: 0x57E)
         profile.bed.airFrequency = 560
-        profile.bed.airLevel = 0.04
+        profile.bed.airLevel = 0.032
         profile.bed.rollLevel = 0.022
         profile.room = 0.18
         profile.knockTouch = KnockTouch(contact: 0.0006...0.0009, snapLevel: 0.15, snapPitch: 2.2)

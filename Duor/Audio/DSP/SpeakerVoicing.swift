@@ -62,6 +62,12 @@ nonisolated struct Biquad: Sendable {
         a2 = a.z / a.x
     }
 
+    /// Forgets the filter's state: silence from the next sample on.
+    mutating func reset() {
+        z1 = 0
+        z2 = 0
+    }
+
     mutating func process(_ input: Float) -> Float {
         let output = b0 * input + z1
         z1 = b1 * input - a1 * output + z2

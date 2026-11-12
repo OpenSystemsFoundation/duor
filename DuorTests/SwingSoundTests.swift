@@ -24,7 +24,8 @@ struct SwingSoundTests {
 
     /// Swings `profile` from `from` to `to` degrees over `seconds`, fed at `rate` updates per second.
     private func swing(
-        _ profile: SoundProfile = .oak, from: Float, to: Float, seconds: Float, rate: Float = 60, seed: UInt32 = 5
+        _ profile: SoundProfile = .oak, from: Float, to: Float, seconds: Float, rate: Float = 60, seed: UInt32 = 5,
+        tail: Float = 0.5
     ) -> [Float] {
         let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: seed)
         let steps = Int(seconds * rate)
@@ -35,7 +36,7 @@ struct SwingSoundTests {
             samples += render(synth, seconds: 1 / rate)
         }
         synth.setSwing(angle: to, velocity: 0)
-        return samples + render(synth, seconds: 0.5)
+        return samples + render(synth, seconds: tail)
     }
 
     // MARK: Friction map
@@ -91,6 +92,30 @@ struct SwingSoundTests {
         let second = swing(.barn, from: 90, to: 130, seconds: 1)
         #expect(first != second)
         #expect(abs(10 * log10(energy(first) / energy(second))) > 0.5)
+    }
+
+    /// The swing sound fades and stays gone: no tick a moment after the door stops (1.1 had one,
+    /// from the air filters ringing out unscaled).
+    @Test(arguments: ["oak", "cottage", "barn", "castle", "spaceship", "metal"])
+    func noTickAfterTheSwingStops(_ door: String) {
+        let profiles: [String: SoundProfile] = [
+            "oak": .oak, "cottage": .pine, "barn": .barn, "castle": .castle, "spaceship": .spaceship, "metal": .steel,
+        ]
+        let samples = swing(profiles[door]!, from: 5, to: 120, seconds: 1, tail: 1.5)
+        let tail = Array(samples.suffix(Int(1.5 * sampleRate)))
+        let loudest = samples.map(abs).max() ?? 0
+        // After 50 ms below -80 dB of the swing's peak, nothing may come back above -40 dB.
+        let window = Int(0.001 * sampleRate)
+        var quiet = 0
+        for start in stride(from: 0, to: tail.count - window, by: window) {
+            let level = tail[start..<start + window].map(abs).max() ?? 0
+            if level < loudest * 1e-4 {
+                quiet += 1
+            } else {
+                #expect(quiet < 50 || level < loudest * 0.01, "\(door): burst after silence at \(start)")
+                quiet = 0
+            }
+        }
     }
 
     @Test func sameGestureSameSound() {

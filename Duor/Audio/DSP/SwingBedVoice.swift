@@ -61,10 +61,17 @@ nonisolated struct SwingBedVoice: Sendable {
     /// Adds the bed to `output` and all of it to the reverb `send`: the room is heard while the door moves.
     mutating func render(into output: UnsafeMutableBufferPointer<Float>, send: UnsafeMutableBufferPointer<Float>) {
         if targetSpeed == 0, speed < 0.01 {
-            speed = 0
-            // Let the filters and the last ticks ring out.
+            if speed > 0 {
+                // The air is scaled after its filters, so their state is at full noise level: by
+                // now the air is silent, so clear it rather than let it ring out unscaled (that
+                // was a loud tick a moment after every swing).
+                speed = 0
+                airBand.reset()
+                airBand2.reset()
+            }
+            // Let the last hinge ticks ring out.
             for frame in output.indices {
-                let sample = airBand2.process(airBand.process(0)) + roll.process(0)
+                let sample = roll.process(0)
                 output[frame] += sample
                 send[frame] += sample
             }

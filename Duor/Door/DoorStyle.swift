@@ -210,6 +210,18 @@ enum InsideScene: String, CaseIterable, Identifiable, Sendable {
         case .brickWall: "Brick wall"
         }
     }
+
+    /// How the space behind the door sounds as the door opens onto it.
+    var acoustics: SceneAcoustics {
+        switch self {
+        case .livingRoom: .livingRoom
+        case .greatHall: .greatHall
+        case .beach: .beach
+        case .forest: .forest
+        case .space: .space
+        case .brickWall: .brickWall
+        }
+    }
 }
 
 /// Everything the user picked, in one value the views and the synth can share.
@@ -226,7 +238,9 @@ struct DoorLook: Equatable, Sendable {
     }
 
     var soundProfile: SoundProfile {
-        style.baseSound.with(metal: hardware.tone)
+        var profile = style.baseSound.with(metal: hardware.tone)
+        profile.scene = scene.acoustics
+        return profile
     }
 }
 

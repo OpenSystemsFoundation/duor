@@ -51,5 +51,7 @@ nonisolated struct ModeSpec: Sendable {
     }
 }
 
-/// The modes that give a struck object its character. Fixed size so voices never allocate.
-typealias ModeSet = InlineArray<6, ModeSpec>
+/// The modes that give a struck object its character: one per lane of a `ModalBank`. Fixed size so
+/// voices never allocate. Metal parts spend two of the eight on close-spaced pairs, which beat
+/// slowly against each other the way a struck plate or bolt shimmers.
+typealias ModeSet = InlineArray<8, ModeSpec>

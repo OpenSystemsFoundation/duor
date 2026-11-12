@@ -24,6 +24,8 @@ nonisolated struct CreakProfile: Sendable {
     /// Formant scale while closing; doors sound slightly different in each direction.
     var closingPitch: Float
     var level: Float
+    /// Where along the swing the hinge grips (its tight spots).
+    var friction = FrictionMap.uniform(1)
 }
 
 /// A continuous hinge creak from a stick-slip friction model.
@@ -38,6 +40,7 @@ nonisolated struct CreakVoice: Sendable {
     private var noise: NoiseSource
 
     private var targetVelocity: Float = 0
+    private var angle: Float = 0
     private var velocity: Float = 0
     private let velocitySmoothing: Float
     private var intensity: Float = 0
@@ -70,8 +73,9 @@ nonisolated struct CreakVoice: Sendable {
         retune()
     }
 
-    /// Signed hinge velocity in degrees per second. Positive opens.
-    mutating func setTarget(velocity: Float) {
+    /// Hinge angle in degrees and signed velocity in degrees per second. Positive opens.
+    mutating func setTarget(angle: Float, velocity: Float) {
+        self.angle = angle
         targetVelocity = velocity
     }
 
@@ -81,7 +85,9 @@ nonisolated struct CreakVoice: Sendable {
         for frame in output.indices {
             velocity += (targetVelocity - velocity) * velocitySmoothing
             let speed = abs(velocity)
-            intensity = Self.smoothstep((speed - profile.onsetSpeed) / span)
+            intensity =
+                Self.smoothstep((speed - profile.onsetSpeed) / span)
+                * profile.friction.grip(at: angle, closing: velocity < 0)
 
             controlCountdown -= 1
             if controlCountdown <= 0 {

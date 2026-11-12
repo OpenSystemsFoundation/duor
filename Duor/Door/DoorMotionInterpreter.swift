@@ -6,8 +6,9 @@ enum DoorEvent: Equatable, Sendable {
     case unlatched
     /// The door is swinging. Positive velocity opens, negative closes (degrees per second).
     case swing(velocity: Double)
-    /// The door reached the closed position.
-    case closed(CloseKind)
+    /// The door reached the closed position at `speed` (degrees per second). The kind picks the
+    /// sound and the haptic; the speed sets how hard it is within that kind.
+    case closed(CloseKind, speed: Double)
     /// The door hit its fully open stop.
     case hitOpenStop(speed: Double)
 }
@@ -156,7 +157,7 @@ struct DoorMotionInterpreter {
         isLatched = true
         latchedAngle = degrees
         velocity = 0
-        return .closed(classifyClose(speed: speed))
+        return .closed(classifyClose(speed: speed), speed: speed)
     }
 
     func classifyClose(speed: Double) -> CloseKind {

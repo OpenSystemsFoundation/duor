@@ -10,20 +10,54 @@ nonisolated enum DoorSound: String, CaseIterable, Sendable {
     case openStop
 }
 
+/// How hard a door event is, from the speed it happened at: the one number that sets how a hit
+/// sounds. Continuous across the gentle, firm and slam boundaries, so repeated closes never sound
+/// stepped.
+nonisolated struct DoorStrength: Sendable {
+    /// Speed (degrees per second) of a typical firm close: what `play(_:)` uses by default.
+    static let nominalSpeed: Float = 150
+    /// Speeds above this are treated as this (a hinge can report wild values after a pause).
+    static let maximumSpeed: Float = 1_500
+    /// The speed range the hardness spans, gentlest to hardest.
+    static let softest: Float = 15
+    static let hardest: Float = 700
+
+    var speed: Float
+
+    /// 0 (barely moving) ... 1 (as hard as a door gets), on a log scale of speed.
+    var hardness: Float {
+        let x = logf(max(speed, Self.softest) / Self.softest) / logf(Self.hardest / Self.softest)
+        return min(max(x, 0), 1)
+    }
+
+    /// Loudness of a latch: a door eased shut is quiet, a firm close full (the 1.0 values were 0.6
+    /// and 1 with nothing in between).
+    var latchVolume: Float { Self.ramp(speed, from: 20, to: 260, 0.4, 1) }
+    /// A slam at the threshold, and harder above it.
+    var slamVolume: Float { Self.ramp(speed, from: 260, to: 700, 0.9, 1) }
+    var openStopVolume: Float { Self.ramp(speed, from: 0, to: 200, 0, 1) }
+
+    private static func ramp(_ speed: Float, from low: Float, to high: Float, _ start: Float, _ end: Float) -> Float {
+        let t = min(max((speed - low) / (high - low), 0), 1)
+        return start + (end - start) * t
+    }
+}
+
 /// Synthesizes every door sound in real time. No samples.
 ///
 /// Thread model: the main thread posts commands into a small locked inbox; the audio thread
 /// swaps the inbox out at the start of each buffer and renders. `render(into:)` never allocates.
 nonisolated final class DoorSynth: Sendable {
     fileprivate enum Command: Sendable {
-        case play(DoorSound, volume: Float)
+        case play(DoorSound, speed: Float)
         case knock(KnockSpot, volume: Float)
         case profile(SoundProfile)
     }
 
     private struct Inbox: Sendable {
         var commands: [Command]
-        var creakVelocity: Float = 0
+        var swingAngle: Float = 0
+        var swingVelocity: Float = 0
         var speakerVoicing: Bool
     }
 
@@ -47,8 +81,10 @@ nonisolated final class DoorSynth: Sendable {
 
     // MARK: Main thread
 
-    func play(_ sound: DoorSound, volume: Float = 1) {
-        post(.play(sound, volume: min(max(volume, 0), 1)))
+    /// A door sound made at `speed` (degrees per second, see `DoorStrength`). Knocks have no speed:
+    /// `play(.knock)` is a firm knock in the middle.
+    func play(_ sound: DoorSound, speed: Float = DoorStrength.nominalSpeed) {
+        post(.play(sound, speed: speed.isFinite ? min(max(speed, 0), DoorStrength.maximumSpeed) : 0))
     }
 
     /// A knock on a particular spot of the door. `play(.knock)` knocks in the middle.
@@ -56,9 +92,14 @@ nonisolated final class DoorSynth: Sendable {
         post(.knock(spot, volume: min(max(volume, 0), 1)))
     }
 
-    /// Signed hinge velocity in degrees per second. 0 lets the creak fade out.
-    func setCreak(velocity: Float) {
-        inbox.withLock { $0.creakVelocity = velocity }
+    /// The hinge angle (degrees) and signed velocity (degrees per second) while the door swings.
+    /// Velocity 0 lets the swing sound settle. Positive velocity opens.
+    func setSwing(angle: Float, velocity: Float) {
+        guard angle.isFinite, velocity.isFinite else { return }
+        inbox.withLock {
+            $0.swingAngle = angle
+            $0.swingVelocity = velocity
+        }
     }
 
     func setProfile(_ profile: SoundProfile) {
@@ -88,7 +129,8 @@ nonisolated final class DoorSynth: Sendable {
             inbox.withLockIfAvailable { inbox in
                 // Both arrays keep their reserved capacity, so the swap never allocates.
                 swap(&core.pending, &inbox.commands)
-                core.creakVelocity = inbox.creakVelocity
+                core.swingAngle = inbox.swingAngle
+                core.swingVelocity = inbox.swingVelocity
                 core.voicing.isOn = inbox.speakerVoicing
             }
             core.render(into: output)
@@ -102,11 +144,13 @@ private nonisolated struct SynthCore: Sendable {
     var profile: SoundProfile
     var voices = InlineArray<24, ImpactVoice>(repeating: ImpactVoice())
     var creak: CreakVoice
+    var bed: SwingBedVoice
     var reverb: RoomReverb
     var voicing: SpeakerVoicing
     var random: NoiseSource
     var pending: [DoorSynth.Command]
-    var creakVelocity: Float = 0
+    var swingAngle: Float = 0
+    var swingVelocity: Float = 0
     let masterGain: Float = 0.9
     /// Reverb send bus. Fixed size: renders are split into chunks of at most this many frames.
     var send: [Float]
@@ -117,6 +161,7 @@ private nonisolated struct SynthCore: Sendable {
         self.profile = profile
         random = NoiseSource(seed: seed)
         creak = CreakVoice(profile: profile.creak, sampleRate: sampleRate, seed: seed &* 2_654_435_761)
+        bed = SwingBedVoice(profile: profile.bed, hinge: profile.hinge, sampleRate: sampleRate, seed: seed &* 40_503)
         reverb = RoomReverb(sampleRate: sampleRate, mix: profile.room)
         voicing = SpeakerVoicing(sampleRate: sampleRate, isOn: speakerVoicing)
         pending = []
@@ -129,7 +174,8 @@ private nonisolated struct SynthCore: Sendable {
             handle(command)
         }
         pending.removeAll(keepingCapacity: true)
-        creak.setTarget(velocity: creakVelocity)
+        creak.setTarget(angle: swingAngle, velocity: swingVelocity)
+        bed.setTarget(velocity: swingVelocity)
 
         var start = 0
         while start < output.count {
@@ -147,6 +193,7 @@ private nonisolated struct SynthCore: Sendable {
             for index in voices.indices {
                 voices[index].render(into: output, send: send)
             }
+            bed.render(into: output, send: send)
             creak.render(into: output, send: send)
 
             // Room, voicing for the phone's speakers (when on), then a soft clipper so stacked hits
@@ -163,16 +210,18 @@ private nonisolated struct SynthCore: Sendable {
         case .profile(let newProfile):
             profile = newProfile
             creak.setProfile(newProfile.creak)
+            bed.setProfile(newProfile.bed, hinge: newProfile.hinge)
             reverb.mix = newProfile.room
         case .knock(let spot, let volume):
             knock(at: spot, volume)
-        case .play(let sound, let volume):
+        case .play(let sound, let speed):
+            let strength = DoorStrength(speed: speed)
             switch sound {
-            case .knock: knock(at: .center, volume)
-            case .unlatch: unlatch(volume)
-            case .latch: latch(volume)
-            case .slam: slam(volume)
-            case .openStop: openStop(volume)
+            case .knock: knock(at: .center, 1)
+            case .unlatch: unlatch(1)
+            case .latch: latch(strength.latchVolume)
+            case .slam: slam(strength.slamVolume)
+            case .openStop: openStop(strength.openStopVolume)
             }
         }
     }

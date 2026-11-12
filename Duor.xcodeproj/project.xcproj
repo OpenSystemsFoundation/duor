@@ -78,6 +78,7 @@
           "path": "Audio",
           "children": [
             { "path": "DoorAudioEngine.swift", "target-membership": [ "Duor/compile-sources" ] },
+            { "path": "SpeakerVoicingMode.swift", "target-membership": [ "Duor/compile-sources" ] },
             {
               "kind": "group",
               "path": "DSP",
@@ -92,6 +93,8 @@
                 { "path": "RoomReverb.swift", "target-membership": [ "Duor/compile-sources" ] },
                 { "path": "NoiseSource.swift", "target-membership": [ "Duor/compile-sources" ] },
                 { "path": "SpeakerVoicing.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "FrictionMap.swift", "target-membership": [ "Duor/compile-sources" ] },
+                { "path": "SwingBedVoice.swift", "target-membership": [ "Duor/compile-sources" ] },
               ],
             },
           ],
@@ -120,6 +123,7 @@
         { "path": "DoorMotionInterpreterTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "DoorSwipeTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "DoorSynthTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
+        { "path": "SwingSoundTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "OutputFaderTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "CatStoryTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },
         { "path": "KnockTests.swift", "target-membership": [ "DuorTests/compile-sources" ] },

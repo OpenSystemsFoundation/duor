@@ -14,6 +14,8 @@ nonisolated struct SoundProfile: Sendable {
     /// Hinge knuckles and plates. Rattle after a slam.
     var hinge: ModeSet
     var creak: CreakProfile
+    /// Air and hinge roll under the creak while the door moves.
+    var bed = SwingBedProfile()
     /// Reverb wet level.
     var room: Float
     /// The door's signature extras.
@@ -113,7 +115,10 @@ extension SoundProfile {
             hiss: 0.02,
             brighten: 0.12,
             closingPitch: 0.94,
-            level: 0.2
+            level: 0.2,
+            // Two modest tight spots.
+            friction: FrictionMap(
+                recipe: .init(count: 2, width: 5...9, strength: 0.45...0.65, floor: 0.12), seed: 0x0A4)
         ),
         room: 0.12
     )
@@ -166,6 +171,8 @@ extension SoundProfile {
         profile.latch = latch.scaled(pitch: metal.pitch, decay: metal.decay)
         profile.hinge = hinge.scaled(pitch: metal.pitch, decay: metal.decay)
         profile.creak.formants = creak.formants.scaled(pitch: metal.pitch.squareRoot())
+        // Other hardware sits a little differently on the same door: its tight spots move a few degrees.
+        profile.creak.friction = creak.friction.shuffled(seed: UInt32(metal.pitch * 1_000 + metal.decay * 7), by: 6)
         return profile
     }
 
@@ -188,6 +195,11 @@ extension SoundProfile {
         profile.creak.baseRate = 55
         profile.creak.ratePerDegree = 1.9
         profile.creak.level = 0.16
+        // One light spot.
+        profile.creak.friction = FrictionMap(
+            recipe: .init(count: 1, width: 5...8, strength: 0.3...0.45, floor: 0.08), seed: 0xC07)
+        profile.bed.airFrequency = 750
+        profile.bed.airLevel = 0.03
         profile.room = 0.1
         profile.character.glassRattle = 0.6
         // A crisp knuckle knock: the reference wood's knock with its sharp snap.
@@ -210,6 +222,12 @@ extension SoundProfile {
         profile.creak.wander = 0.26
         profile.creak.jitter = 0.06
         profile.creak.level = 0.26
+        // Wide, strong spots.
+        profile.creak.friction = FrictionMap(
+            recipe: .init(count: 3, width: 10...16, strength: 0.6...0.9, floor: 0.25), seed: 0xBA2)
+        profile.bed.airFrequency = 480
+        profile.bed.airLevel = 0.05
+        profile.bed.rollLevel = 0.025
         profile.room = 0.2
         profile.character.looseBoards = 0.7
         return profile
@@ -230,6 +248,12 @@ extension SoundProfile {
         profile.creak.wander = 0.3
         profile.creak.jitter = 0.07
         profile.creak.level = 0.3
+        profile.creak.friction = FrictionMap(
+            recipe: .init(count: 3, width: 12...18, strength: 0.7...0.95, floor: 0.3), seed: 0xCA5)
+        profile.bed.airFrequency = 380
+        profile.bed.airLevel = 0.06
+        profile.bed.rollLevel = 0.03
+        profile.bed.rollPerDegree = 0.25
         profile.room = 0.32
         profile.character.heavyBolt = true
         profile.knockTouch = KnockTouch(contact: 0.0018...0.0024, snapLevel: 0.05, snapPitch: 2, thump: 0.4)
@@ -289,6 +313,11 @@ extension SoundProfile {
         profile.creak.brighten = 0.08
         profile.creak.closingPitch = 0.92
         profile.creak.level = 0.06
+        // The servo hums the whole way: no tight spots. A light hatch moves little air.
+        profile.creak.friction = .uniform(1)
+        profile.bed.airFrequency = 900
+        profile.bed.airLevel = 0.02
+        profile.bed.rollLevel = 0.008
         profile.room = 0.14
         profile.knockTouch = KnockTouch(contact: 0.0009...0.0013, snapLevel: 0.1, snapPitch: 2)
         profile.character.softClose = true
@@ -348,6 +377,12 @@ extension SoundProfile {
         profile.creak.brighten = 0.08
         profile.creak.level = 0.11
         profile.creak.fullSpeed = 40
+        // One spot where it squeals.
+        profile.creak.friction = FrictionMap(
+            recipe: .init(count: 1, width: 6...10, strength: 0.7...0.9, floor: 0.1), seed: 0x57E)
+        profile.bed.airFrequency = 560
+        profile.bed.airLevel = 0.04
+        profile.bed.rollLevel = 0.022
         profile.room = 0.18
         profile.knockTouch = KnockTouch(contact: 0.0006...0.0009, snapLevel: 0.15, snapPitch: 2.2)
         return profile

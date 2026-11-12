@@ -69,6 +69,8 @@ final class DoorController {
     static let creakFadeDelay = Duration.milliseconds(150)
     /// How fast the door swings open when asked to (accessibility): about halfway open.
     static let swingOpenSpeed = 240.0
+    /// The handle turns at the same pace however the door then swings.
+    static let unlatchSpeed = 60.0
 
     init(sounds: any DoorSoundPlaying = DoorAudioEngine(), clock: any DoorClock = SystemDoorClock()) {
         self.sounds = sounds
@@ -106,7 +108,7 @@ final class DoorController {
 
     /// The door jumped to the hinge angle without swinging: no creak or slam for that.
     private func restartAfterJump() {
-        sounds.setCreak(velocity: 0)
+        sounds.setSwing(angle: drive.degrees, velocity: 0)
         interpreter.restart()
         if let hinge, drive.followsHinge {
             ingest(hinge)
@@ -215,22 +217,18 @@ final class DoorController {
         }
         switch event {
         case .unlatched:
-            sounds.play(.unlatch, volume: 1)
+            sounds.play(.unlatch, speed: Self.unlatchSpeed)
             emit(.unlatch)
         case .swing(let velocity):
-            sounds.setCreak(velocity: velocity)
+            sounds.setSwing(angle: angle, velocity: velocity)
             scheduleCreakFade()
         case .hitOpenStop(let speed):
-            sounds.setCreak(velocity: 0)
-            sounds.play(.openStop, volume: Float(min(speed / 200, 1)))
+            sounds.setSwing(angle: angle, velocity: 0)
+            sounds.play(.openStop, speed: speed)
             emit(.openStop)
-        case .closed(let kind):
-            sounds.setCreak(velocity: 0)
-            switch kind {
-            case .gentle: sounds.play(.latch, volume: 0.6)
-            case .firm: sounds.play(.latch, volume: 1)
-            case .slam: sounds.play(.slam, volume: 1)
-            }
+        case .closed(let kind, let speed):
+            sounds.setSwing(angle: 0, velocity: 0)
+            sounds.play(kind == .slam ? .slam : .latch, speed: speed)
             emit(.closed(kind))
         }
     }
@@ -243,10 +241,10 @@ final class DoorController {
     /// Hinge updates stop arriving when the door stops moving, so fade the creak on a timer.
     private func scheduleCreakFade() {
         creakFadeTask?.cancel()
-        creakFadeTask = Task { [sounds, clock] in
+        creakFadeTask = Task { [weak self, sounds, clock] in
             try? await clock.sleep(for: Self.creakFadeDelay)
             guard !Task.isCancelled else { return }
-            sounds.setCreak(velocity: 0)
+            sounds.setSwing(angle: self?.angle ?? 0, velocity: 0)
         }
     }
 }

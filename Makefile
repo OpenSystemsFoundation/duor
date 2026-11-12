@@ -10,7 +10,10 @@ ARCHIVE     := build/Duor.xcarchive
 # Every upload needs a new build number: use the commit count, which only goes up.
 BUILD_NUMBER := $(shell git rev-list --count HEAD)
 
-.PHONY: build test run sounds banner format lint archive upload clean
+.PHONY: build test run sounds bench audio-check banner format lint archive upload clean
+
+# On a Mac through xcrun; elsewhere (Linux) the Swift toolchain on the PATH.
+SWIFTC := $(shell command -v xcrun >/dev/null 2>&1 && echo xcrun swiftc || echo swiftc)
 
 build:
 	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) -destination '$(DESTINATION)' -derivedDataPath $(DERIVED)
@@ -24,11 +27,25 @@ run: build
 	xcrun simctl install "$(SIMULATOR)" $(APP)
 	xcrun simctl launch "$(SIMULATOR)" $(BUNDLE_ID)
 
-# Render every synthesized sound to build/sounds/*.wav for listening (afplay) and tuning.
-sounds:
+# Render every synthesized sound to build/sounds/*.wav for listening (afplay) and tuning, and print
+# the measurements (loudness against targets, peaks, creak tonality, decay, render cost).
+# Compare with an earlier run: make sounds BASELINE=path/to/metrics.json
+sounds: build/render-sounds
+	build/render-sounds build/sounds --json build/sounds/metrics.json $(if $(BASELINE),--baseline $(BASELINE))
+
+# Render cost only.
+bench: build/render-sounds
+	build/render-sounds --bench
+
+build/render-sounds: Duor/Audio/DSP/*.swift Tools/RenderSounds/*.swift
 	mkdir -p build
-	xcrun swiftc -O -swift-version 6 Duor/Audio/DSP/*.swift Tools/RenderSounds/main.swift -o build/render-sounds
-	build/render-sounds build/sounds
+	$(SWIFTC) -O -swift-version 6 -default-isolation MainActor Duor/Audio/DSP/*.swift Tools/RenderSounds/*.swift \
+		-o build/render-sounds
+
+# The audio and door-logic tests without Xcode or a simulator (also runs on Linux). `make test` runs
+# them too, with everything else.
+audio-check:
+	swift test --package-path Tools/AudioCheck
 
 # Render the App Store header (21:9) and search results (3:2) artwork to appstore/creative/.
 banner:

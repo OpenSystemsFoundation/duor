@@ -143,6 +143,11 @@ struct Measurement: Codable {
     var onPhone: Float
     var centroid: Float
     var presence: Float
+    /// Harshness: centroid (Hz) and the shares of energy in 2–5 kHz and above 5 kHz over the first
+    /// 200 ms after the onset.
+    var onsetCentroid: Float?
+    var onsetPresence: Float?
+    var onsetAir: Float?
     var t60: Float
     var ring: Float
     var largestStep: Float
@@ -171,6 +176,10 @@ func measure(
         onPhone: decibels(phoneSpeakerRMS(samples)),
         centroid: spectrum.centroid, presence: spectrum.presence2to5k, t60: decay.t60, ring: decay.ring,
         largestStep: largestStep(samples), finite: samples.allSatisfy(\.isFinite))
+    let harsh = harshness(samples)
+    measurement.onsetCentroid = harsh.centroid
+    measurement.onsetPresence = harsh.presence
+    measurement.onsetAir = harsh.air
     measurement.mixPeak = decibels(lastMeter.mixPeak)
     measurement.limiting = decibels(lastMeter.limiterGain)
     if continuous {
@@ -364,6 +373,49 @@ let loudnessTargets: [String: (Float, String)] = [
     "unlatch": (-12, "≈"), "swing-normal": (-10, "≤"), "swing-slow": (-10, "≤"),
 ]
 
+/// How dark each sound has to start to be easy on the ear (flat render, first 200 ms): the highest
+/// centroid in Hz and the largest shares of energy in 2–5 kHz and above 5 kHz, in percent.
+/// Closes of a swinging door are the strictest: a real door closing is dark. A hatch on a damper
+/// may hiss, and panes of glass may tinkle a little above 5 kHz. Knocks only have to stay out of
+/// the top.
+func harshnessTargets(_ event: String, _ profile: SoundProfile) -> (centroid: Float?, presence: Float?, air: Float) {
+    let closes = ["latch-gentle", "latch-firm", "slam"]
+    let hatch = profile.character.softClose
+    let air: Float = hatch || profile.character.glassRattle > 0 ? 6 : 3
+    if closes.contains(event) { return hatch ? (1_500, 30, air) : (700, 8, air) }
+    switch event {
+    case "unlatch": return (nil, 15, air)
+    case "open-stop": return (nil, 10, air)
+    default: return (nil, nil, air)
+    }
+}
+
+func reportHarshness() {
+    print("\n== Harshness, first 200 ms: centroid Hz / share in 2–5 kHz % / above 5 kHz %, flat, then voiced")
+    print("   (flat targets: closes ≤ 700 Hz and ≤ 8 %, a hatch on a damper ≤ 1500 Hz and ≤ 30 %; unlatch ≤ 15 %;")
+    print("    open stop ≤ 10 %; above 5 kHz ≤ 3 %, with glass or a hatch ≤ 6 %; ! marks a miss)")
+    for prefix in ["", "speaker-"] {
+        print(pad(prefix.isEmpty ? "flat" : "voiced", 10), events.map { pad($0.0, 19) }.joined())
+        for (door, profile) in doors {
+            var row = pad(door, 10)
+            for name in events.map(\.0) {
+                guard let m = results["\(prefix)\(door)-\(name)"], let centroid = m.onsetCentroid,
+                    let presence = m.onsetPresence, let air = m.onsetAir
+                else { continue }
+                let target = harshnessTargets(name, profile)
+                let miss =
+                    prefix.isEmpty
+                    && (centroid > target.centroid ?? .infinity || presence * 100 > target.presence ?? 100
+                        || air * 100 > target.air)
+                row += pad(
+                    number(centroid, 5, 0) + "/" + number(presence * 100, 4) + "/" + number(air * 100, 4)
+                        + (miss ? "!" : " "), 19)
+            }
+            print(row)
+        }
+    }
+}
+
 func report() {
     print("\n== Loudness on the phone measure (voiced), relative to the door's slam; target in brackets")
     print("   (a soft-close door cannot slam: its firm close is the reference, marked ref)")
@@ -391,6 +443,8 @@ func report() {
         }
         print(row, " span", number(loudest - quietest, 5), loudest - quietest > 14 ? "!" : "")
     }
+
+    reportHarshness()
 
     print("\n== Peaks: worst output peak and level into the soft clipper (dBFS), per door, flat and voiced")
     for (door, _) in doors {
@@ -526,13 +580,21 @@ func compare(with path: String) throws {
     let before = try JSONDecoder().decode(
         [String: Measurement].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
     print("\n== Before → after (\(path)): flat renders")
-    print(pad("sound", 30), "  rms dB          on phone dB      centroid Hz       periodicity")
+    print(
+        pad("sound", 30),
+        "  rms dB          on phone dB      centroid Hz       first 200 ms: Hz, 2–5 kHz %, > 5 kHz %     periodicity")
     for name in order where !name.hasPrefix("speaker-") {
         guard let old = before[name], let new = results[name] else { continue }
         var line = pad(name, 30)
         line += number(old.rms) + " →" + number(new.rms) + "  "
         line += number(old.onPhone) + " →" + number(new.onPhone) + "  "
         line += number(old.centroid, 6, 0) + " →" + number(new.centroid, 6, 0)
+        if let a = old.onsetCentroid, let b = new.onsetCentroid, let c = old.onsetPresence,
+            let d = new.onsetPresence, let e = old.onsetAir, let f = new.onsetAir
+        {
+            line += "  " + number(a, 6, 0) + " →" + number(b, 5, 0) + number(c * 100, 6) + " →" + number(d * 100, 5)
+            line += number(e * 100, 6) + " →" + number(f * 100, 5)
+        }
         if let a = old.periodicityMax, let b = new.periodicityMax {
             line += "  " + number(a, 5, 2) + " →" + number(b, 5, 2)
         }

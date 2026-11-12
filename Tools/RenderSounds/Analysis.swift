@@ -111,6 +111,27 @@ func summarize(_ spectrum: [Float]) -> SpectrumSummary {
         presence2to5k: share(bands[2]), above5k: share(bands[3]))
 }
 
+/// How harsh a sound starts: where its energy sits over the first 200 ms after its onset (the
+/// first sample above 5 % of the peak), which is the stretch listeners judge a material by.
+struct Harshness {
+    /// Spectral centroid in Hz. Wood and knocks sit low; above about 2.7 kHz reads as metal or glass.
+    var centroid: Float
+    /// Share of the energy in 2–5 kHz, where the ear is most sensitive and a phone speaker
+    /// loudest, and above 5 kHz (0...1).
+    var presence: Float
+    var air: Float
+}
+
+func harshness(_ samples: [Float]) -> Harshness {
+    let threshold = peak(samples) * 0.05
+    guard threshold > 0, let onset = samples.firstIndex(where: { abs($0) > threshold }) else {
+        return Harshness(centroid: 0, presence: 0, air: 0)
+    }
+    let end = min(onset + Int(0.2 * sampleRate), samples.count)
+    let summary = summarize(powerSpectrum(samples[onset..<end], size: 1_024))
+    return Harshness(centroid: summary.centroid, presence: summary.presence2to5k, air: summary.above5k)
+}
+
 /// How tonal a continuous sound is: per 40 ms window that is sounding, the highest normalized
 /// autocorrelation for pitches between 80 Hz and 1 kHz, and the pitch it is at.
 struct Periodicity {

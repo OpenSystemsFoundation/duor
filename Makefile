@@ -10,7 +10,7 @@ ARCHIVE     := build/Duor.xcarchive
 # Every upload needs a new build number: use the commit count, which only goes up.
 BUILD_NUMBER := $(shell git rev-list --count HEAD)
 
-.PHONY: build test run sounds bench audio-check banner format lint archive upload clean
+.PHONY: build test test-audio run sounds bench audio-check banner format lint archive upload clean
 
 # On a Mac through xcrun; elsewhere (Linux) the Swift toolchain on the PATH.
 SWIFTC := $(shell command -v xcrun >/dev/null 2>&1 && echo xcrun swiftc || echo swiftc)
@@ -18,7 +18,16 @@ SWIFTC := $(shell command -v xcrun >/dev/null 2>&1 && echo xcrun swiftc || echo 
 build:
 	xcodebuild build -project $(PROJECT) -scheme $(SCHEME) -destination '$(DESTINATION)' -derivedDataPath $(DERIVED)
 
+# The suites that synthesize and measure sound are slow; `make test` skips them, `make test-audio`
+# runs everything (as does `make audio-check`, without a simulator).
+AUDIO_SUITES := CreakTests GainStagingTests ImpactTests RoomTests RecipeTests SlidingDoorTests \
+	SweepTests ScrapeTests SwingSoundTests
+
 test:
+	xcodebuild test -project $(PROJECT) -scheme $(SCHEME) -destination '$(DESTINATION)' -derivedDataPath $(DERIVED) \
+		$(foreach suite,$(AUDIO_SUITES),-skip-testing:DuorTests/$(suite))
+
+test-audio:
 	xcodebuild test -project $(PROJECT) -scheme $(SCHEME) -destination '$(DESTINATION)' -derivedDataPath $(DERIVED)
 
 run: build
@@ -43,7 +52,7 @@ build/render-sounds: Duor/Audio/DSP/*.swift Tools/RenderSounds/*.swift
 		-o build/render-sounds
 
 # The audio and door-logic tests without Xcode or a simulator (also runs on Linux). `make test` runs
-# them too, with everything else.
+# them too, with everything else, as `make test-audio` does.
 audio-check:
 	swift test --package-path Tools/AudioCheck
 

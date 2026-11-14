@@ -1,16 +1,34 @@
-// Renders every door sound to a WAV file so the synth can be auditioned and tuned on a Mac.
+// Renders every door sound to WAV files and measures them, so the synth can be auditioned, tuned and
+// compared before and after a change, on a Mac or on Linux.
 //
-//   make sounds                 # writes build/sounds/*.wav and prints levels
-//   afplay build/sounds/sequence.wav
+//   make sounds                                   # writes build/sounds/*.wav, prints the tables
+//   build/render-sounds build/sounds --json after.json --baseline before.json   # with deltas
+//   build/render-sounds build/sounds --bench      # render cost only
+//   build/render-sounds build/sounds --events --no-wav   # the one-shot sounds only (quick, for tuning)
 //
 // Compiled together with Duor/Audio/DSP/*.swift (no app or AVFoundation code).
 
-import Accelerate
 import Foundation
 
 let sampleRate: Float = 48_000
 let blockSize = 256
-let outputDirectory = URL(fileURLWithPath: CommandLine.arguments.dropFirst().first ?? "build/sounds")
+
+var arguments = Array(CommandLine.arguments.dropFirst())
+func option(_ name: String) -> String? {
+    guard let index = arguments.firstIndex(of: name), index + 1 < arguments.count else { return nil }
+    return arguments[index + 1]
+}
+let outputDirectory = URL(fileURLWithPath: arguments.first { !$0.hasPrefix("--") } ?? "build/sounds")
+let jsonPath = option("--json")
+let baselinePath = option("--baseline")
+let benchOnly = arguments.contains("--bench")
+let writesFiles = !arguments.contains("--no-wav")
+/// Skip the swing gestures and their (slow) tonality analysis.
+let eventsOnly = arguments.contains("--events")
+
+// MARK: - Driving the synth
+//
+// The only place that knows the synth's control API, so the scenarios below stay the same when it changes.
 
 /// Something to do to the synth at a point in time.
 struct Cue {
@@ -18,32 +36,84 @@ struct Cue {
     var action: (DoorSynth) -> Void
 }
 
-func play(_ sound: DoorSound, at time: Float, volume: Float = 1) -> Cue {
-    Cue(time: time) { $0.play(sound, volume: volume) }
+/// A one-shot sound at a given speed in degrees per second, mapped the way `DoorController` maps it.
+func event(_ sound: DoorSound, speed: Float, at time: Float) -> Cue {
+    Cue(time: time) { $0.play(sound, speed: speed) }
 }
 
 func knock(_ x: Float, _ y: Float, at time: Float, volume: Float = 1) -> Cue {
     Cue(time: time) { $0.knock(at: KnockSpot(x: x, y: y), volume: volume) }
 }
 
-/// Feeds hinge velocity at 60 Hz, like `onHingeChange` would, then stops.
-func swing(from start: Float, duration: Float, velocity: @escaping (Float) -> Float) -> [Cue] {
-    let steps = Int(duration * 60)
-    var cues = (0...steps).map { step in
-        let t = Float(step) / 60
-        return Cue(time: start + t) { $0.setCreak(velocity: velocity(t)) }
+/// The hinge angle over time, in degrees.
+struct Gesture {
+    var duration: Float
+    var angle: (Float) -> Float
+}
+
+/// Eased move from one angle to another.
+func move(_ from: Float, _ to: Float, over duration: Float) -> Gesture {
+    Gesture(duration: duration) { t in
+        let x = min(max(t / duration, 0), 1)
+        return from + (to - from) * (x * x * (3 - 2 * x))
     }
-    cues.append(Cue(time: start + duration) { $0.setCreak(velocity: 0) })
+}
+
+func hold(_ angle: Float, for duration: Float) -> Gesture { Gesture(duration: duration) { _ in angle } }
+
+func + (first: Gesture, second: Gesture) -> Gesture {
+    Gesture(duration: first.duration + second.duration) { t in
+        t < first.duration ? first.angle(t) : second.angle(t - first.duration)
+    }
+}
+
+/// Feeds a gesture the way `DoorController` does: an update per hinge sample (`rate` per second, or
+/// irregular), only once the angle moved 1.5° (the interpreter's jitter tolerance), with the
+/// interpreter's smoothed velocity, and velocity 0 after 150 ms without movement.
+func swing(_ gesture: Gesture, from start: Float, rate: Float = 60, irregular: Bool = false) -> [Cue] {
+    var cues: [Cue] = []
+    var random = NoiseSource(seed: 77)
+    var t: Float = 0
+    var anchorAngle = gesture.angle(0), anchorTime: Float = 0
+    var velocity: Float = 0
+    var lastSent: Float = -1
+    while t <= gesture.duration + 0.3 {
+        let angle = gesture.angle(min(t, gesture.duration))
+        if abs(angle - anchorAngle) >= 1.5 {
+            let gap = min(max(t - anchorTime, 1 / 240), 0.5)
+            velocity += ((angle - anchorAngle) / gap - velocity) * 0.5
+            anchorAngle = angle
+            anchorTime = t
+            if abs(velocity) >= 6 {
+                let (a, v) = (angle, velocity)
+                cues.append(Cue(time: start + t) { $0.setSwingForTool(angle: a, velocity: v) })
+                lastSent = t
+            }
+        } else if lastSent >= 0, t - lastSent >= 0.15 {
+            let a = angle
+            cues.append(Cue(time: start + t) { $0.setSwingForTool(angle: a, velocity: 0) })
+            lastSent = -1
+            velocity = 0
+        }
+        t += irregular ? random.value(in: 0.004...0.09) : 1 / rate
+    }
+    if lastSent >= 0 {
+        let a = gesture.angle(gesture.duration)
+        cues.append(Cue(time: start + lastSent + 0.15) { $0.setSwingForTool(angle: a, velocity: 0) })
+    }
     return cues
 }
 
-/// `speaker`: voiced for the phone's own speakers, as the app plays on them (see `SpeakerVoicing`).
-func render(_ name: String, seconds: Float, cues: [Cue], profile: SoundProfile = .oak, speaker: Bool = false) throws {
-    let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 42, speakerVoicing: speaker)
+// MARK: - Rendering
+
+/// What the gain staging did during the last `render`.
+nonisolated(unsafe) var lastMeter = SynthMeter()
+
+func render(_ cues: [Cue], seconds: Float, profile: SoundProfile, speaker: Bool, seed: UInt32 = 42) -> [Float] {
+    let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: seed, speakerVoicing: speaker)
     let frameCount = Int(seconds * sampleRate)
     var samples = [Float](repeating: 0, count: frameCount)
     var pending = cues.sorted { $0.time < $1.time }[...]
-
     var frame = 0
     while frame < frameCount {
         let now = Float(frame) / sampleRate
@@ -57,189 +127,546 @@ func render(_ name: String, seconds: Float, cues: [Cue], profile: SoundProfile =
         }
         frame += count
     }
-
-    let peak = samples.map(abs).max() ?? 0
-    let rms = sqrt(samples.map { $0 * $0 }.reduce(0, +) / Float(max(frameCount, 1)))
-    let decibels = { (value: Float) in value > 0 ? 20 * log10(value) : -.infinity }
-    let finite = samples.allSatisfy(\.isFinite)
-    // Ring time: from the peak until the signal last exceeds the peak minus 40 dB.
-    let peakIndex = samples.firstIndex { abs($0) == peak } ?? 0
-    let lastLoud = samples.lastIndex { abs($0) > peak * 0.01 } ?? peakIndex
-    let ringTime = Float(lastLoud - peakIndex) / sampleRate
-    let (brightness, speakerLevel) = spectrum(of: samples, from: max(peakIndex - 64, 0))
-    let onPhone = phoneSpeakerRMS(samples)
-    print(
-        name.padding(toLength: 20, withPad: " ", startingAt: 0),
-        String(
-            format:
-                "peak %6.1f dBFS   rms %6.1f dBFS   ring %4.0f ms   centroid %5.0f Hz   above 250 Hz %6.1f dB   on phone %6.1f dB",
-            decibels(peak), decibels(rms), ringTime * 1000, brightness, decibels(speakerLevel), decibels(onPhone)),
-        finite ? "" : "  NON-FINITE SAMPLES")
-
-    try writeWAV(samples, to: outputDirectory.appendingPathComponent("\(name).wav"))
+    lastMeter = synth.takeMeter()
+    return samples
 }
 
-/// Roughly what a phone's own speaker gets across: the RMS of the sound through a 200 Hz – 6 kHz band
-/// (4th-order high-pass, 2nd-order low-pass), over the loudest 300 ms.
-func phoneSpeakerRMS(_ samples: [Float]) -> Float {
-    var highPass1 = Biquad(.highPass, frequency: 200, q: 0.541, sampleRate: sampleRate)
-    var highPass2 = Biquad(.highPass, frequency: 200, q: 1.307, sampleRate: sampleRate)
-    var lowPass = Biquad(.lowPass, frequency: 6_000, q: 0.707, sampleRate: sampleRate)
-    let heard = samples.map { lowPass.process(highPass2.process(highPass1.process($0))) }
-    let window = min(Int(0.3 * sampleRate), heard.count)
-    var best: Float = 0
-    var sum: Float = 0
-    for index in heard.indices {
-        sum += heard[index] * heard[index]
-        if index >= window { sum -= heard[index - window] * heard[index - window] }
-        best = max(best, sum)
+struct Measurement: Codable {
+    var peak: Float
+    var rms: Float
+    /// Level going into the final soft clipper, worked back from the output peak.
+    var clipperIn: Float
+    /// Peak of the mix before the limiter (dBFS; the limiter's ceiling is 0), and the most the
+    /// limiter turned it down (dB, 0 = it never worked).
+    var mixPeak: Float?
+    var limiting: Float?
+    var onPhone: Float
+    var centroid: Float
+    var presence: Float
+    /// Harshness: centroid (Hz) and the shares of energy in 2–5 kHz and above 5 kHz over the first
+    /// 200 ms after the onset.
+    var onsetCentroid: Float?
+    var onsetPresence: Float?
+    var onsetAir: Float?
+    var t60: Float
+    var ring: Float
+    var largestStep: Float
+    var periodicityMax: Float?
+    var periodicityMedian: Float?
+    var pitchLow: Float?
+    var pitchHigh: Float?
+    var sounding: Float?
+    var finite: Bool
+}
+
+var results: [String: Measurement] = [:]
+var order: [String] = []
+
+@discardableResult
+func measure(
+    _ name: String, seconds: Float, cues: [Cue], profile: SoundProfile, speaker: Bool = false, continuous: Bool = false
+) throws -> Measurement {
+    let samples = render(cues, seconds: seconds, profile: profile, speaker: speaker)
+    let peakValue = peak(samples)
+    let spectrum = summarize(powerSpectrum(samples[...]))
+    let decay = decayTimes(samples)
+    var measurement = Measurement(
+        peak: decibels(peakValue), rms: decibels(rms(samples[...])),
+        clipperIn: decibels(atanh(min(peakValue / DoorSynth.outputGain, 0.999_999))),
+        onPhone: decibels(phoneSpeakerRMS(samples)),
+        centroid: spectrum.centroid, presence: spectrum.presence2to5k, t60: decay.t60, ring: decay.ring,
+        largestStep: largestStep(samples), finite: samples.allSatisfy(\.isFinite))
+    let harsh = harshness(samples)
+    measurement.onsetCentroid = harsh.centroid
+    measurement.onsetPresence = harsh.presence
+    measurement.onsetAir = harsh.air
+    measurement.mixPeak = decibels(lastMeter.mixPeak)
+    measurement.limiting = decibels(lastMeter.limiterGain)
+    if continuous {
+        let tonal = periodicity(samples)
+        measurement.periodicityMax = tonal.maximum
+        measurement.periodicityMedian = tonal.median
+        measurement.pitchLow = tonal.pitchLow
+        measurement.pitchHigh = tonal.pitchHigh
+        measurement.sounding = tonal.soundingShare
     }
-    return sqrt(best / Float(max(window, 1)))
+    results[name] = measurement
+    order.append(name)
+    if writesFiles { try writeWAV(samples, to: outputDirectory.appendingPathComponent("\(name).wav")) }
+    return measurement
 }
 
-/// Spectral centroid (how bright it sounds) and RMS above 250 Hz (what a phone speaker can play)
-/// over the 170 ms after `start`.
-func spectrum(of samples: [Float], from start: Int) -> (centroid: Float, highRMS: Float) {
-    let count = 8192
-    var frame = [Float](repeating: 0, count: count)
-    for index in 0..<min(count, samples.count - start) { frame[index] = samples[start + index] }
-    let fft = vDSP.FFT(log2n: 13, radix: .radix2, ofType: DSPSplitComplex.self)!
-    var real = [Float](repeating: 0, count: count / 2), imaginary = [Float](repeating: 0, count: count / 2)
-    var magnitudes = [Float](repeating: 0, count: count / 2)
-    real.withUnsafeMutableBufferPointer { realPointer in
-        imaginary.withUnsafeMutableBufferPointer { imaginaryPointer in
-            var split = DSPSplitComplex(realp: realPointer.baseAddress!, imagp: imaginaryPointer.baseAddress!)
-            frame.withUnsafeBufferPointer {
-                $0.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: count / 2) {
-                    vDSP_ctoz($0, 2, &split, 1, vDSP_Length(count / 2))
-                }
+// MARK: - Scenarios
+
+let doors: [(String, SoundProfile)] = [
+    ("oak", .oak), ("cottage", .pine), ("barn", .barn), ("castle", .castle), ("spaceship", .spaceship),
+    ("metal", .steel),
+]
+let metals: [(String, MetalTone)] = [
+    ("iron", .iron), ("brass", .brass), ("chrome", .chrome), ("copper", .copper), ("bronze", .bronze),
+]
+
+let scenes: [(String, SceneAcoustics)] = [
+    ("living-room", .livingRoom), ("great-hall", .greatHall), ("beach", .beach), ("forest", .forest),
+    ("space", .space), ("brick-wall", .brickWall),
+]
+
+/// The decay of a room on its own: a click through `RoomReverb`, T60 from the Schroeder curve
+/// (-15 to -45 dB, below 1 kHz), and the energy that comes back against the click's.
+func roomDecay(_ acoustics: RoomAcoustics) -> (t60: Float, energy: Float) {
+    var room = RoomReverb(sampleRate: sampleRate, acoustics: acoustics)
+    let count = Int(6 * sampleRate)
+    var input = [Float](repeating: 0, count: count)
+    var output = [Float](repeating: 0, count: count)
+    input[0] = 1
+    input.withUnsafeMutableBufferPointer { source in
+        output.withUnsafeMutableBufferPointer { destination in
+            var start = 0
+            while start < count {
+                let end = min(start + blockSize, count)
+                room.process(
+                    UnsafeMutableBufferPointer(rebasing: source[start..<end]),
+                    into: UnsafeMutableBufferPointer(rebasing: destination[start..<end]))
+                start = end
             }
-            fft.forward(input: split, output: &split)
-            vDSP.squareMagnitudes(split, result: &magnitudes)
         }
     }
-    let binWidth = sampleRate / Float(count)
-    var weighted: Float = 0, total: Float = 0, high: Float = 0
-    for (bin, power) in magnitudes.enumerated().dropFirst() {
-        let frequency = Float(bin) * binWidth
-        weighted += frequency * power
-        total += power
-        if frequency >= 250 { high += power }
+    let total = output.reduce(0) { $0 + $1 * $1 }
+    // The decay time is that of the lows and middle; the highs die sooner (damping).
+    var lowPass = Biquad(.lowPass, frequency: 1_000, q: 0.707, sampleRate: sampleRate)
+    let lows = output.map { lowPass.process($0) }
+    guard total > 0 else { return (0, 0) }
+    var start = 0
+    var end = 0
+    var sum = 0.0
+    for sample in lows { sum += Double(sample * sample) }
+    let whole = sum
+    for (index, sample) in lows.enumerated() {
+        sum -= Double(sample * sample)
+        let level = 10 * log10(max(sum / whole, 1e-15))
+        if start == 0, level <= -15 { start = index }
+        if end == 0, level <= -45 {
+            end = index
+            break
+        }
     }
-    let rmsScale = sqrt(Float(count)) * Float(count) / 2
-    return (total > 0 ? weighted / total : 0, sqrt(high * 2) / rmsScale)
+    return (Float(end - start) / sampleRate * 2, total)
 }
 
-func writeWAV(_ samples: [Float], to url: URL) throws {
-    var data = Data()
-    func append<T: FixedWidthInteger>(_ value: T) {
-        withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) }
-    }
-    let byteCount = UInt32(samples.count * 2)
-    data.append(contentsOf: Array("RIFF".utf8))
-    append(36 + byteCount)
-    data.append(contentsOf: Array("WAVEfmt ".utf8))
-    append(UInt32(16))
-    append(UInt16(1))  // PCM
-    append(UInt16(1))  // mono
-    append(UInt32(sampleRate))
-    append(UInt32(sampleRate) * 2)
-    append(UInt16(2))
-    append(UInt16(16))
-    data.append(contentsOf: Array("data".utf8))
-    append(byteCount)
-    for sample in samples {
-        append(Int16(max(-1, min(1, sample)) * Float(Int16.max)))
-    }
-    try data.write(to: url)
-}
+/// Event speeds in degrees per second, typical for each kind of close (see `DoorMotionInterpreter`).
+let gentleSpeed: Float = 50, firmSpeed: Float = 150, slamSpeed: Float = 320, hardSlamSpeed: Float = 600
+let openStopSpeed: Float = 120
+/// `DoorController.unlatchSpeed`.
+let unlatchSpeed: Float = 60
+/// Closing speeds for the how-hard sweep, with a pair either side of the firm (90) and slam (260) boundaries.
+let closeSpeeds: [Float] = [20, 40, 60, 89, 91, 120, 160, 200, 259, 261, 320, 450, 600]
 
-try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-
-try render(
-    "knock", seconds: 1.4,
-    cues: [play(.knock, at: 0.05, volume: 0.9), play(.knock, at: 0.33), play(.knock, at: 0.58, volume: 0.85)])
-try render("knock-single", seconds: 0.6, cues: [play(.knock, at: 0.05)])
-// Where the knock lands: middle of the leaf, near the hinge edge, by the handle, near the top.
-try render("knock-middle", seconds: 0.6, cues: [knock(0.5, 0.5, at: 0.05)])
-try render("knock-edge", seconds: 0.6, cues: [knock(0.06, 0.5, at: 0.05)])
-try render("knock-handle", seconds: 0.6, cues: [knock(0.94, 0.5, at: 0.05)])
-try render("knock-top", seconds: 0.6, cues: [knock(0.5, 0.08, at: 0.05)])
-// The same spot three times, then walking across the door.
-try render(
-    "knock-repeat", seconds: 1.4,
-    cues: [knock(0.5, 0.4, at: 0.05, volume: 0.9), knock(0.5, 0.4, at: 0.33), knock(0.5, 0.4, at: 0.58, volume: 0.85)])
-try render(
-    "knock-across", seconds: 1.6,
-    cues: [
-        knock(0.08, 0.45, at: 0.05), knock(0.3, 0.45, at: 0.33), knock(0.55, 0.45, at: 0.61),
-        knock(0.92, 0.5, at: 0.89),
-    ])
-try render("unlatch", seconds: 0.8, cues: [play(.unlatch, at: 0.05)])
-try render("airlock-unlatch", seconds: 1, cues: [play(.unlatch, at: 0.05)], profile: .spaceship)
-try render(
-    "spaceship-creak", seconds: 2.2, cues: swing(from: 0.1, duration: 1.3) { 120 * sin(.pi * $0 / 1.3) },
-    profile: .spaceship)
-try render("steel-slam", seconds: 1.6, cues: [play(.slam, at: 0.05)], profile: .steel)
-try render("steel-latch", seconds: 1.2, cues: [play(.latch, at: 0.05)], profile: .steel)
-try render(
-    "steel-creak", seconds: 2.2, cues: swing(from: 0.1, duration: 1.3) { 120 * sin(.pi * $0 / 1.3) }, profile: .steel)
-try render("latch-gentle", seconds: 0.9, cues: [play(.latch, at: 0.05, volume: 0.6)])
-try render("latch-firm", seconds: 0.9, cues: [play(.latch, at: 0.05, volume: 1)])
-try render("slam", seconds: 1.4, cues: [play(.slam, at: 0.05)])
-try render("open-stop", seconds: 0.9, cues: [play(.openStop, at: 0.05, volume: 0.8)])
-try render("creak-slow", seconds: 3, cues: swing(from: 0.1, duration: 2.4) { _ in 22 })
-try render(
-    "creak-open", seconds: 2.2,
-    cues: swing(from: 0.1, duration: 1.3) { 170 * sin(.pi * $0 / 1.3) } + [play(.openStop, at: 1.4, volume: 0.5)])
-
-// Knock, knock. Open slowly, hit the stop, swing it shut fast: slam.
-try render(
-    "sequence", seconds: 5.5,
-    cues: [
-        play(.knock, at: 0.1, volume: 0.9), play(.knock, at: 0.36),
-        play(.unlatch, at: 1.3),
-    ]
-        + swing(from: 1.35, duration: 1.2) { 140 * sin(.pi * $0 / 1.2) }
-        + [play(.openStop, at: 2.6, volume: 0.6)]
-        + swing(from: 3.4, duration: 0.45) { -260 * sin(.pi * $0 / 0.45) }
-        + [play(.slam, at: 3.85)])
-
-// Every door type: a knock and the full sequence.
-let doors: [(String, SoundProfile)] = [
-    ("oak", .oak), ("pine", .pine), ("barn", .barn), ("castle", .castle), ("spaceship", .spaceship), ("steel", .steel),
-    ("oak-brass", SoundProfile.oak.with(metal: .brass)), ("oak-chrome", SoundProfile.oak.with(metal: .chrome)),
+let events: [(String, Float, [Cue])] = [
+    ("knock", 1.2, [knock(0.5, 0.5, at: 0.05)]),
+    ("unlatch", 1.2, [event(.unlatch, speed: unlatchSpeed, at: 0.05)]),
+    ("latch-gentle", 1.4, [event(.latch, speed: gentleSpeed, at: 0.05)]),
+    ("latch-firm", 1.4, [event(.latch, speed: firmSpeed, at: 0.05)]),
+    ("slam", 2.5, [event(.slam, speed: slamSpeed, at: 0.05)]),
+    ("open-stop", 1.4, [event(.openStop, speed: openStopSpeed, at: 0.05)]),
 ]
-for (name, profile) in doors {
-    try render("knock-\(name)", seconds: 1.2, cues: [play(.knock, at: 0.05)], profile: profile)
-    try render(
-        "door-\(name)", seconds: 5.5,
-        cues: [
-            play(.knock, at: 0.1, volume: 0.9), play(.knock, at: 0.36),
-            play(.unlatch, at: 1.3),
-        ]
-            + swing(from: 1.35, duration: 1.2) { 140 * sin(.pi * $0 / 1.2) }
-            + [play(.openStop, at: 2.6, volume: 0.6)]
-            + swing(from: 3.4, duration: 0.45) { -260 * sin(.pi * $0 / 0.45) }
-            + [play(.slam, at: 3.85)],
-        profile: profile)
+
+let gestures: [(String, Gesture)] = [
+    ("swing-slow", move(5, 120, over: 3)),
+    ("swing-normal", move(5, 120, over: 1)),
+    ("swing-fast", move(5, 150, over: 0.4)),
+    ("swing-hesitate", move(5, 40, over: 0.8) + hold(40, for: 0.5) + move(40, 110, over: 0.8)),
+    (
+        "swing-wiggle",
+        Gesture(duration: 2) { 60 + 10 * sin(2 * .pi * 1.5 * $0) }
+    ),
+    ("swing-open-close", move(5, 110, over: 1) + hold(110, for: 0.3) + move(110, 5, over: 0.8)),
+]
+
+/// Knock, knock. Open slowly, hit the stop, swing it shut fast: slam.
+func sequence() -> [Cue] {
+    [knock(0.5, 0.5, at: 0.1, volume: 0.9), knock(0.5, 0.45, at: 0.36), event(.unlatch, speed: unlatchSpeed, at: 1.3)]
+        + swing(move(3, 150, over: 1.2), from: 1.35)
+        + [event(.openStop, speed: openStopSpeed, at: 2.56)]
+        + swing(move(150, 3, over: 0.45), from: 3.4)
+        + [event(.slam, speed: slamSpeed, at: 3.86)]
 }
 
-// As played on the phone's own speakers: compare with the flat files above.
-for (name, profile) in doors.prefix(6) {
-    try render("speaker-knock-\(name)", seconds: 1.2, cues: [play(.knock, at: 0.05)], profile: profile, speaker: true)
+func runScenarios() throws {
+    try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+    for speaker in [false, true] {
+        let prefix = speaker ? "speaker-" : ""
+        for (door, profile) in doors {
+            for (name, seconds, cues) in events {
+                try measure(
+                    "\(prefix)\(door)-\(name)", seconds: seconds, cues: cues, profile: profile, speaker: speaker)
+            }
+            for (name, gesture) in gestures where !eventsOnly {
+                try measure(
+                    "\(prefix)\(door)-\(name)", seconds: gesture.duration + 1.2, cues: swing(gesture, from: 0.1),
+                    profile: profile, speaker: speaker, continuous: true)
+            }
+            try measure("\(prefix)\(door)-sequence", seconds: 5.5, cues: sequence(), profile: profile, speaker: speaker)
+        }
+    }
+    // Hardware on the reference door.
+    for (metal, tone) in metals {
+        let profile = SoundProfile.oak.with(metal: tone)
+        try measure("oak-\(metal)-latch-firm", seconds: 1.4, cues: events[3].2, profile: profile)
+        try measure("oak-\(metal)-unlatch", seconds: 1.2, cues: events[1].2, profile: profile)
+        try measure(
+            "castle-\(metal)-open-stop", seconds: 1.4, cues: events[5].2, profile: SoundProfile.castle.with(metal: tone)
+        )
+        if eventsOnly { continue }
+        try measure(
+            "oak-\(metal)-swing-slow", seconds: 4.2, cues: swing(move(5, 120, over: 3), from: 0.1), profile: profile,
+            continuous: true)
+    }
+    // How hard: closing at increasing speed should get louder and brighter, without big jumps.
+    for (door, profile) in doors {
+        for speed in closeSpeeds {
+            let sound: DoorSound = speed >= 260 ? .slam : .latch
+            for speaker in [false, true] {
+                try measure(
+                    "\(speaker ? "speaker-" : "")\(door)-close-\(Int(speed))", seconds: 2.5,
+                    cues: [event(sound, speed: speed, at: 0.05)], profile: profile, speaker: speaker)
+            }
+        }
+    }
+    try measure(
+        "oak-slam-hard", seconds: 2.5, cues: [event(.slam, speed: hardSlamSpeed, at: 0.05)], profile: .oak)
+    // The same gesture fed at different hinge update rates should sound about the same.
+    for (name, rate, irregular) in [
+        ("20hz", Float(20), false), ("60hz", 60, false), ("120hz", 120, false), ("irregular", 60, true),
+    ] where !eventsOnly {
+        try measure(
+            "oak-rate-\(name)", seconds: 2.4,
+            cues: swing(move(5, 120, over: 1.2), from: 0.1, rate: rate, irregular: irregular),
+            profile: .oak, continuous: true)
+    }
+    // What is beyond the door: the same open stop, door wide open, onto each inside scene.
+    for (name, scene) in scenes {
+        var profile = SoundProfile.oak
+        profile.scene = scene
+        try measure(
+            "oak-scene-\(name)-open-stop", seconds: 3.5,
+            cues: [
+                Cue(time: 0) { $0.setSwingForTool(angle: 150, velocity: 0) },
+                event(.openStop, speed: openStopSpeed, at: 0.4),
+            ], profile: profile)
+    }
+    // Stacked hits: 200 commands at once.
+    try measure(
+        "oak-burst", seconds: 1.5, cues: (0..<200).map { _ in event(.slam, speed: slamSpeed, at: 0.05) }, profile: .oak)
 }
-try render("speaker-slam", seconds: 1.4, cues: [play(.slam, at: 0.05)], speaker: true)
-try render(
-    "speaker-sequence", seconds: 5.5,
-    cues: [
-        play(.knock, at: 0.1, volume: 0.9), play(.knock, at: 0.36),
-        play(.unlatch, at: 1.3),
-    ]
-        + swing(from: 1.35, duration: 1.2) { 140 * sin(.pi * $0 / 1.2) }
-        + [play(.openStop, at: 2.6, volume: 0.6)]
-        + swing(from: 3.4, duration: 0.45) { -260 * sin(.pi * $0 / 0.45) }
-        + [play(.slam, at: 3.85)],
-    speaker: true)
 
-print("Wrote WAV files to \(outputDirectory.path)")
+// MARK: - Reports
+
+func pad(_ text: String, _ width: Int) -> String { text.padding(toLength: width, withPad: " ", startingAt: 0) }
+func number(_ value: Float, _ width: Int = 7, _ decimals: Int = 1) -> String {
+    let text = String(format: "%.\(decimals)f", value)
+    return String(repeating: " ", count: max(0, width - text.count)) + text
+}
+
+/// Target level of each event on the phone measure, relative to that door's slam (dB), from the design.
+let loudnessTargets: [String: (Float, String)] = [
+    "knock": (-4, "≈"), "latch-firm": (-6, "≈"), "open-stop": (-8, "≈"), "latch-gentle": (-12, "≈"),
+    "unlatch": (-12, "≈"), "swing-normal": (-10, "≤"), "swing-slow": (-10, "≤"),
+]
+
+/// How dark each sound has to start to be easy on the ear (flat render, first 200 ms): the highest
+/// centroid in Hz and the largest shares of energy in 2–5 kHz and above 5 kHz, in percent.
+/// Closes of a swinging door are the strictest: a real door closing is dark. A hatch on a damper
+/// may hiss, and panes of glass may tinkle a little above 5 kHz. Knocks only have to stay out of
+/// the top.
+func harshnessTargets(_ event: String, _ profile: SoundProfile) -> (centroid: Float?, presence: Float?, air: Float) {
+    let closes = ["latch-gentle", "latch-firm", "slam"]
+    let hatch = profile.character.softClose
+    let air: Float = hatch || profile.character.glassRattle > 0 ? 6 : 3
+    if closes.contains(event) { return hatch ? (1_500, 30, air) : (700, 8, air) }
+    // (A hatch's rush of air and motor stay as low as its closes.)
+    switch event {
+    case "unlatch": return (hatch ? 1_500 : nil, 15, air)
+    case "open-stop": return (hatch ? 1_500 : nil, 10, air)
+    default: return (nil, nil, air)
+    }
+}
+
+func reportHarshness() {
+    print("\n== Harshness, first 200 ms: centroid Hz / share in 2–5 kHz % / above 5 kHz %, flat, then voiced")
+    print("   (flat targets: closes about 700 Hz or lower and ≤ 8 %, a hatch on a damper 1500 Hz and ≤ 30 %;")
+    print(
+        "    unlatch ≤ 15 %; open stop ≤ 10 % (a hatch's also 1500 Hz); above 5 kHz ≤ 3 %, with glass or a hatch ≤ 6 %;"
+    )
+    print("    ! marks a miss, for the centroid by more than 5 %)")
+    for prefix in ["", "speaker-"] {
+        print(pad(prefix.isEmpty ? "flat" : "voiced", 10), events.map { pad($0.0, 19) }.joined())
+        for (door, profile) in doors {
+            var row = pad(door, 10)
+            for name in events.map(\.0) {
+                guard let m = results["\(prefix)\(door)-\(name)"], let centroid = m.onsetCentroid,
+                    let presence = m.onsetPresence, let air = m.onsetAir
+                else { continue }
+                let target = harshnessTargets(name, profile)
+                let miss =
+                    prefix.isEmpty
+                    && (centroid > (target.centroid ?? .infinity) * 1.05 || presence * 100 > target.presence ?? 100
+                        || air * 100 > target.air)
+                row += pad(
+                    number(centroid, 5, 0) + "/" + number(presence * 100, 4) + "/" + number(air * 100, 4)
+                        + (miss ? "!" : " "), 19)
+            }
+            print(row)
+        }
+    }
+}
+
+func report() {
+    print("\n== Loudness on the phone measure (voiced), relative to the door's slam; target in brackets")
+    print("   (a soft-close door cannot slam: its firm close is the reference, marked ref;")
+    print("    a door that slides open by itself has its unlatch at -6: the opening is its main sound)")
+    print(pad("door", 10), events.map { pad($0.0, 17) }.joined(), pad("swing-slow", 17), pad("swing-normal", 17))
+    for (door, profile) in doors {
+        let reference = profile.character.softClose ? "latch-firm" : "slam"
+        guard let slam = results["speaker-\(door)-\(reference)"]?.onPhone else { continue }
+        var row = pad(door, 10)
+        var loudest: Float = -.infinity, quietest: Float = .infinity
+        for name in events.map(\.0) + ["swing-slow", "swing-normal"] {
+            guard let level = results["speaker-\(door)-\(name)"]?.onPhone else { continue }
+            let relative = level - slam
+            if !name.hasPrefix("swing") {
+                loudest = max(loudest, relative)
+                quietest = min(quietest, relative)
+            }
+            if name == reference {
+                row += pad(number(relative, 6) + " ref \(Int(slam.rounded()))", 17)
+            } else if let (usual, kind) = loudnessTargets[name] {
+                // A door that slides open by itself is heard mostly as it opens.
+                let target = name == "unlatch" && profile.character.slides ? -6 : usual
+                let miss = kind == "≤" ? relative > target + 0.5 : abs(relative - target) > 3
+                row += pad(number(relative, 6) + " (\(Int(target)))\(miss ? "!" : " ")", 17)
+            } else {
+                row += pad(number(relative, 6), 17)
+            }
+        }
+        print(row, " span", number(loudest - quietest, 5), loudest - quietest > 14 ? "!" : "")
+    }
+
+    reportHarshness()
+
+    print("\n== Peaks: worst output peak and level into the soft clipper (dBFS), per door, flat and voiced")
+    for (door, _) in doors {
+        for prefix in ["", "speaker-"] {
+            let rows = results.filter { $0.key.hasPrefix("\(prefix)\(door)-") }
+            guard let worst = rows.max(by: { $0.value.clipperIn < $1.value.clipperIn }) else { continue }
+            print(
+                pad("\(prefix)\(door)", 18), "peak", number(worst.value.peak), "  clipper in",
+                number(worst.value.clipperIn),
+                "  (\(worst.key))")
+        }
+    }
+
+    print(
+        "\n== Gain staging: mix peak before the limiter (dBFS, ceiling 0) flat / voiced, and the most the limiter worked (dB)"
+    )
+    print(pad("door", 10), events.map { pad($0.0, 20) }.joined(), pad("sequence", 20))
+    for (door, _) in doors {
+        var row = pad(door, 10)
+        var worst: Float = 0
+        for name in events.map(\.0) + ["sequence"] {
+            guard let flat = results["\(door)-\(name)"], let voiced = results["speaker-\(door)-\(name)"] else {
+                continue
+            }
+            row += pad(number(flat.mixPeak ?? 0, 6) + " /" + number(voiced.mixPeak ?? 0, 6), 20)
+            worst = min(worst, flat.limiting ?? 0, voiced.limiting ?? 0)
+        }
+        print(row, " limiter", number(worst, 5))
+    }
+    if let burst = results["oak-burst"] {
+        print("oak-burst  mix peak", number(burst.mixPeak ?? 0), "  limiter", number(burst.limiting ?? 0))
+    }
+
+    print("\n== Door balance: full sequence RMS (flat / voiced phone measure)")
+    let sequenceLevels = doors.compactMap { door, _ in results["\(door)-sequence"].map { (door, $0) } }
+    for (door, value) in sequenceLevels {
+        print(
+            pad(door, 10), "rms", number(value.rms), "   on phone (voiced)",
+            number(results["speaker-\(door)-sequence"]?.onPhone ?? 0))
+    }
+    if let high = sequenceLevels.map(\.1.rms).max(), let low = sequenceLevels.map(\.1.rms).min() {
+        print("spread", number(high - low), "dB (target ≤ 7: the cottage door is the quiet one on purpose)")
+    }
+    let phoneLevels = doors.compactMap { door, _ in results["speaker-\(door)-sequence"]?.onPhone }
+    if let high = phoneLevels.max(), let low = phoneLevels.min() {
+        print("spread on phone", number(high - low), "dB")
+    }
+
+    print(
+        "\n== Swing sound (flat): periodicity max/median (wood target < 0.5), pitch p10–p90, sounding share, rms, presence 2–5 kHz"
+    )
+    for (door, _) in doors {
+        for (name, _) in gestures {
+            guard let m = results["\(door)-\(name)"] else { continue }
+            print(
+                pad("\(door)-\(name)", 26), number(m.periodicityMax ?? 0, 5, 2), number(m.periodicityMedian ?? 0, 5, 2),
+                number(m.pitchLow ?? 0, 6, 0), "–", number(m.pitchHigh ?? 0, 4, 0), "Hz",
+                number((m.sounding ?? 0) * 100, 5, 0), "%", "  rms", number(m.rms), "  presence",
+                number(m.presence * 100, 4, 0), "%")
+        }
+    }
+
+    print("\n== How hard: closes by speed, per door: on phone dB (voiced) / centroid Hz (flat)")
+    print("   (latch below 260°/s, slam above; one take each, and takes differ by a few percent:")
+    print("    ! marks a step down in loudness, or of more than 8 % in brightness)")
+    print(pad("°/s", 10), closeSpeeds.map { pad(String(Int($0)), 12) }.joined())
+    for (door, _) in doors {
+        var row = pad(door, 10)
+        var last: (Float, Float) = (-200, 0)
+        for speed in closeSpeeds {
+            guard let flat = results["\(door)-close-\(Int(speed))"],
+                let voiced = results["speaker-\(door)-close-\(Int(speed))"]
+            else { continue }
+            let down = voiced.onPhone < last.0 - 0.2 || flat.centroid < last.1 * 0.92
+            row += pad(number(voiced.onPhone, 5) + "/" + number(flat.centroid, 4, 0) + (down ? "!" : ""), 12)
+            last = (voiced.onPhone, flat.centroid)
+        }
+        print(row)
+    }
+
+    print("\n== Hardware: firm latch and unlatch on oak, open stop on castle, per metal (rms, centroid, ring)")
+    for (metal, _) in metals {
+        var row = pad(metal, 8)
+        for name in ["oak-\(metal)-latch-firm", "oak-\(metal)-unlatch", "castle-\(metal)-open-stop"] {
+            guard let m = results[name] else { continue }
+            row += "  " + number(m.rms, 6) + " dB" + number(m.centroid, 6, 0) + " Hz" + number(m.ring, 5, 2) + " s  |"
+        }
+        print(row)
+    }
+
+    print("\n== Decay (T60 estimate from the Schroeder curve) of the slam, flat")
+    for (door, _) in doors {
+        if let m = results["\(door)-slam"] {
+            print(pad(door, 10), "T60", number(m.t60, 5, 2), "s   ring", number(m.ring, 5, 2), "s")
+        }
+    }
+
+    print("\n== Rooms on their own (a click through the reverb): T60 measured / asked, energy against the click")
+    for (door, profile) in doors {
+        let decay = roomDecay(profile.space)
+        print(
+            pad(door, 12), "T60", number(decay.t60, 5, 2), "/", number(profile.space.decay, 4, 2), "s   energy",
+            number(10 * log10(max(decay.energy, 1e-12)), 6), "dB")
+    }
+    for (name, scene) in scenes where scene.level > 0 {
+        let decay = roomDecay(scene.room)
+        print(
+            pad("(\(name))", 12), "T60", number(decay.t60, 5, 2), "/", number(scene.room.decay, 4, 2),
+            "s   energy", number(10 * log10(max(decay.energy, 1e-12)), 6), "dB")
+    }
+
+    print("\n== Beyond the door: oak open stop with the door wide open, per inside scene (rms, T60, ring)")
+    for (name, _) in scenes {
+        if let m = results["oak-scene-\(name)-open-stop"] {
+            print(
+                pad(name, 12), "rms", number(m.rms), "  T60", number(m.t60, 5, 2), "s   ring", number(m.ring, 5, 2), "s"
+            )
+        }
+    }
+
+    print("\n== Update rate independence (oak swing, rms / sounding)")
+    for name in ["20hz", "60hz", "120hz", "irregular"] {
+        if let m = results["oak-rate-\(name)"] {
+            print(pad(name, 10), "rms", number(m.rms), "  sounding", number((m.sounding ?? 0) * 100, 4, 0), "%")
+        }
+    }
+
+    let nonFinite = results.filter { !$0.value.finite }.map(\.key)
+    let over = results.filter { $0.value.peak > 0 }.map(\.key)
+    print(
+        "\n== Safety: non-finite renders:", nonFinite.isEmpty ? "none" : nonFinite.joined(separator: ", "),
+        "  peaks ≥ 0 dBFS:", over.isEmpty ? "none" : over.joined(separator: ", "),
+        "  burst largest step:", number(results["oak-burst"]?.largestStep ?? 0, 5, 3))
+}
+
+func compare(with path: String) throws {
+    let before = try JSONDecoder().decode(
+        [String: Measurement].self, from: Data(contentsOf: URL(fileURLWithPath: path)))
+    print("\n== Before → after (\(path)): flat renders")
+    print(
+        pad("sound", 30),
+        "  rms dB          on phone dB      centroid Hz       first 200 ms: Hz, 2–5 kHz %, > 5 kHz %     periodicity")
+    for name in order where !name.hasPrefix("speaker-") {
+        guard let old = before[name], let new = results[name] else { continue }
+        var line = pad(name, 30)
+        line += number(old.rms) + " →" + number(new.rms) + "  "
+        line += number(old.onPhone) + " →" + number(new.onPhone) + "  "
+        line += number(old.centroid, 6, 0) + " →" + number(new.centroid, 6, 0)
+        if let a = old.onsetCentroid, let b = new.onsetCentroid, let c = old.onsetPresence,
+            let d = new.onsetPresence, let e = old.onsetAir, let f = new.onsetAir
+        {
+            line += "  " + number(a, 6, 0) + " →" + number(b, 5, 0) + number(c * 100, 6) + " →" + number(d * 100, 5)
+            line += number(e * 100, 6) + " →" + number(f * 100, 5)
+        }
+        if let a = old.periodicityMax, let b = new.periodicityMax {
+            line += "  " + number(a, 5, 2) + " →" + number(b, 5, 2)
+        }
+        print(line)
+    }
+}
+
+// MARK: - Render cost
+
+/// Seconds of CPU per second of audio, in percent of one core, for a busy and a quiet case.
+func benchmark() {
+    func cost(
+        _ label: String, seconds: Float = 20, profile: SoundProfile = .castle, setup: (DoorSynth, Int) -> Void
+    ) {
+        let synth = DoorSynth(sampleRate: sampleRate, profile: profile, seed: 3, speakerVoicing: true)
+        var buffer = [Float](repeating: 0, count: blockSize)
+        let blocks = Int(seconds * sampleRate) / blockSize
+        let start = DispatchTime.now().uptimeNanoseconds
+        for block in 0..<blocks {
+            setup(synth, block)
+            buffer.withUnsafeMutableBufferPointer { synth.render(into: $0) }
+        }
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
+        print(pad(label, 44), String(format: "%6.2f %% of a core", elapsed / Double(seconds) * 100))
+    }
+    print("\n== Render cost at 48 kHz, \(blockSize)-frame buffers, speaker voicing on (this machine)")
+    cost("idle") { _, _ in }
+    cost("swinging (continuous swing sound)") { synth, block in
+        let t = Float(block * blockSize) / sampleRate
+        synth.setSwingForTool(angle: 90 + 60 * sin(t), velocity: 60 * cos(t) * 2)
+    }
+    cost("worst case: every voice busy + swinging") { synth, block in
+        if block % 8 == 0 {
+            for _ in 0..<8 { synth.play(.slam, speed: hardSlamSpeed) }
+        }
+        let t = Float(block * blockSize) / sampleRate
+        synth.setSwingForTool(angle: 90 + 60 * sin(t), velocity: 120 * cos(t))
+    }
+    // The spaceship: its servo hum, and every motor tone and chime busy on top of the voices.
+    cost("worst case, spaceship: + motor tones", profile: .spaceship) { synth, block in
+        if block % 8 == 0 {
+            for _ in 0..<3 {
+                synth.play(.unlatch)
+                synth.play(.slam, speed: hardSlamSpeed)
+                synth.play(.openStop, speed: 400)
+            }
+        }
+        let t = Float(block * blockSize) / sampleRate
+        synth.setSwingForTool(angle: 90 + 60 * sin(t), velocity: 120 * cos(t))
+    }
+}
+
+if !benchOnly {
+    try runScenarios()
+    report()
+    if let jsonPath {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
+        try encoder.encode(results).write(to: URL(fileURLWithPath: jsonPath))
+    }
+    if let baselinePath { try compare(with: baselinePath) }
+}
+benchmark()
+if !benchOnly, writesFiles { print("\nWrote WAV files to \(outputDirectory.path)") }

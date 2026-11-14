@@ -43,7 +43,7 @@ struct DoorMotionInterpreterTests {
         var interpreter = DoorMotionInterpreter()
         _ = interpreter.ingest(reading(from, at: 0))
         let events = interpreter.ingest(reading(0, at: duration))
-        #expect(events.contains(.closed(expected)))
+        #expect(events.closeKinds == [expected])
     }
 
     @Test func longPauseIsNotASlam() {
@@ -51,7 +51,7 @@ struct DoorMotionInterpreterTests {
         _ = interpreter.ingest(reading(30, at: 0))
         // 30° after 5 seconds of silence is capped at the max sample gap (30 / 0.25 = 120°/s).
         let events = interpreter.ingest(reading(0, at: 5))
-        #expect(!events.contains(.closed(.slam)))
+        #expect(!events.closeKinds.contains(.slam))
     }
 
     @Test func reachingFlatHitsOpenStop() {
@@ -145,4 +145,32 @@ struct DoorMotionInterpreterTests {
         _ = interpreter.ingest(reading(30, at: 0))
         #expect(interpreter.settle(at: 5).isEmpty)
     }
+}
+
+extension DoorMotionInterpreterTests {
+    @Test func closeCarriesItsSpeed() throws {
+        var interpreter = DoorMotionInterpreter()
+        _ = interpreter.ingest(reading(40, at: 0))
+        let events = interpreter.ingest(reading(0, at: 0.25))
+        let speed = try #require(events.closeSpeeds.first)
+        // 40° in 0.25 s, smoothed: between half and all of 160°/s.
+        #expect((80...160).contains(speed))
+        #expect(events.closeKinds == [.firm])
+    }
+
+    @Test func fasterClosesCarryHigherSpeeds() {
+        func speed(closingFrom degrees: Double, in duration: Double) -> Double {
+            var interpreter = DoorMotionInterpreter()
+            _ = interpreter.ingest(reading(degrees, at: 0))
+            return interpreter.ingest(reading(0, at: duration)).closeSpeeds.first ?? 0
+        }
+        let speeds = [0.6, 0.4, 0.25, 0.15, 0.1].map { speed(closingFrom: 60, in: $0) }
+        #expect(speeds == speeds.sorted())
+        #expect(Set(speeds).count == speeds.count)
+    }
+}
+
+extension [DoorEvent] {
+    var closeKinds: [CloseKind] { compactMap { if case .closed(let kind, _) = $0 { kind } else { nil } } }
+    var closeSpeeds: [Double] { compactMap { if case .closed(_, let speed) = $0 { speed } else { nil } } }
 }

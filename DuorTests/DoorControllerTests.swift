@@ -38,15 +38,23 @@ private final class ManualClock: DoorClock {
 /// Records what the controller asks the audio engine to do.
 private final class SoundRecorder: DoorSoundPlaying {
     var played: [DoorSound] = []
+    var speeds: [Double] = []
     var creak: Double = 0
+    var creakAngles: [Double] = []
     var hasCreaked = false
 
     func apply(profile: SoundProfile) {}
-    func play(_ sound: DoorSound, volume: Float) { played.append(sound) }
+    func play(_ sound: DoorSound, speed: Double) {
+        played.append(sound)
+        speeds.append(speed)
+    }
     func knock(at spot: KnockSpot, volume: Float) {}
-    func setCreak(velocity: Double) {
+    func setSwing(angle: Double, velocity: Double) {
         creak = velocity
-        if velocity != 0 { hasCreaked = true }
+        if velocity != 0 {
+            hasCreaked = true
+            creakAngles.append(angle)
+        }
     }
 }
 
@@ -81,6 +89,22 @@ struct DoorControllerTests {
         #expect(sounds.hasCreaked)
         #expect(!controller.isClosed)
         #expect(abs(controller.angle - 60) < 1)
+    }
+
+    @Test func swingSoundFollowsTheDoorAngle() async {
+        await swipe(to: 60)
+        #expect(!sounds.creakAngles.isEmpty)
+        #expect(sounds.creakAngles == sounds.creakAngles.sorted(), "opening: the angle only rises")
+        #expect(sounds.creakAngles.allSatisfy { (0...61).contains($0) })
+    }
+
+    @Test func harderClosesCarryTheirSpeed() async throws {
+        await swipe(to: 90)
+        controller.swipeChanged(translation: 20, width: width)
+        controller.swipeEnded(velocity: 3000, width: width)
+        await clock.advance(by: 1)
+        let slamSpeed = try #require(sounds.speeds.last)
+        #expect(slamSpeed >= DoorMotionInterpreter.Configuration().slamSpeed)
     }
 
     @Test func creakFadesOnceTheDoorStops() async {

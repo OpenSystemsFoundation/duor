@@ -19,6 +19,12 @@ nonisolated struct Biquad: Sendable {
     private var z2: Float = 0
 
     init(_ kind: Kind, frequency: Float, q: Float, gainDB: Float = 0, sampleRate: Float) {
+        retune(kind, frequency: frequency, q: q, gainDB: gainDB, sampleRate: sampleRate)
+    }
+
+    /// Changes the filter while it runs, keeping what it holds: for a band that glides. In small
+    /// steps (a few percent at a time) this is smooth.
+    mutating func retune(_ kind: Kind, frequency: Float, q: Float, gainDB: Float = 0, sampleRate: Float) {
         let omega = 2 * Float.pi * min(frequency, sampleRate * 0.45) / sampleRate
         let cosine = cosf(omega)
         let alpha = sinf(omega) / (2 * q)
@@ -54,6 +60,12 @@ nonisolated struct Biquad: Sendable {
         b2 = b.z / a.x
         a1 = a.y / a.x
         a2 = a.z / a.x
+    }
+
+    /// Forgets the filter's state: silence from the next sample on.
+    mutating func reset() {
+        z1 = 0
+        z2 = 0
     }
 
     mutating func process(_ input: Float) -> Float {
@@ -104,12 +116,17 @@ nonisolated struct SpeakerVoicing: Sendable {
     static let virtualBass: Float = 0.6
     /// Below this the speaker is cut off (Hz).
     static let cutoff: Float = 150
-    /// Compressor: level where it starts working, its ratio, and the make-up gain after it. Tuned
-    /// with `make sounds` ("on phone"): knocks come across about 3.5 dB louder on a phone speaker,
-    /// slams over 5 dB, while the soft clipper after it works no harder than it does flat.
+    /// Compressor: level where it starts working, its ratio, and the make-up gain after it.
+    ///
+    /// Tuned with `make sounds` against the limiter that follows it in `DoorSynth`. The mix now
+    /// arrives with single sounds peaking at or under full scale, so the compressor only works on
+    /// stacked sounds, and the make-up gain is what sets how hard the voiced mix leans on the
+    /// limiter: at 1.4 the loudest single sounds (a knock, a slam) reach it 2 dB or so over its
+    /// ceiling, so it shaves their first peak and leaves everything else alone, and they come
+    /// across about 3 dB louder on a phone speaker than played flat.
     static let threshold: Float = 0.8
     static let ratio: Float = 3
-    static let makeUp: Float = 1.5
+    static let makeUp: Float = 1.4
 
     init(sampleRate: Float, isOn: Bool = false) {
         self.isOn = isOn

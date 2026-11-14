@@ -157,7 +157,7 @@ struct DoorSwipeTests {
             time += 1.0 / 60
             events += interpreter.ingest(.simulated(degrees: fling.degrees, at: time))
         }
-        #expect(events.contains(.closed(.slam)))
+        #expect(events.closeKinds.contains(.slam))
     }
 
     @Test func nearlyShutDoorSwingsItselfShutGently() {
@@ -171,7 +171,7 @@ struct DoorSwipeTests {
             events += interpreter.ingest(.simulated(degrees: fling.degrees, at: time))
         }
         #expect(fling.degrees == 0)
-        #expect(events.contains(.closed(.gentle)))
+        #expect(events.closeKinds.contains(.gentle))
     }
 
     // MARK: Slide

@@ -4,33 +4,13 @@ import os
 
 protocol DoorSoundPlaying: AnyObject {
     func apply(profile: SoundProfile)
-    func play(_ sound: DoorSound, volume: Float)
+    /// A door sound made at `speed` (degrees per second). How hard sets loudness, brightness and
+    /// timing together, so a faster close sounds harder, not only louder.
+    func play(_ sound: DoorSound, speed: Double)
     func knock(at spot: KnockSpot, volume: Float)
-    /// Signed hinge velocity in degrees per second. 0 lets the creak fade out.
-    func setCreak(velocity: Double)
-}
-
-/// When to voice the sound for the phone's own speakers (`SpeakerVoicing`). Automatic unless the
-/// `-speakerVoicing on|off` launch argument says otherwise (for comparing the two on a device).
-enum SpeakerVoicingMode: String {
-    /// Only on the built-in speaker, not headphones, Bluetooth or AirPlay.
-    case auto
-    case on
-    case off
-
-    static let storageKey = "speakerVoicing"
-
-    static var current: SpeakerVoicingMode {
-        UserDefaults.standard.string(forKey: storageKey).flatMap(SpeakerVoicingMode.init) ?? .auto
-    }
-
-    func isOn(builtInSpeaker: Bool) -> Bool {
-        switch self {
-        case .auto: builtInSpeaker
-        case .on: true
-        case .off: false
-        }
-    }
+    /// The hinge angle (degrees) and signed velocity (degrees per second) while the door swings.
+    /// Velocity 0 lets the swing sound settle.
+    func setSwing(angle: Double, velocity: Double)
 }
 
 /// Runs `DoorSynth` through `AVAudioEngine` with an `AVAudioSourceNode`.
@@ -86,9 +66,9 @@ final class DoorAudioEngine: DoorSoundPlaying {
         synth.setProfile(profile)
     }
 
-    func play(_ sound: DoorSound, volume: Float) {
+    func play(_ sound: DoorSound, speed: Double) {
         startIfNeeded()
-        synth.play(sound, volume: volume)
+        synth.play(sound, speed: Float(speed))
     }
 
     func knock(at spot: KnockSpot, volume: Float) {
@@ -96,8 +76,8 @@ final class DoorAudioEngine: DoorSoundPlaying {
         synth.knock(at: spot, volume: volume)
     }
 
-    func setCreak(velocity: Double) {
-        synth.setCreak(velocity: Float(velocity))
+    func setSwing(angle: Double, velocity: Double) {
+        synth.setSwing(angle: Float(angle), velocity: Float(velocity))
     }
 
     /// Whether the sound goes to the built-in speaker (and the mode allows voicing for it).

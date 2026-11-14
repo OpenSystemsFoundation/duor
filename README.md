@@ -1,12 +1,26 @@
-# Duor
+<p align="center">
+  <img src="docs/images/duor-icon.png" alt="Duor app icon: a wooden door standing ajar with warm light behind it" width="128" height="128">
+</p>
 
-A door simulator for the foldable **iPhone Duo**. The phone is the door:
+<h1 align="center">Duor</h1>
+
+<p align="center">
+  <a href="https://apps.apple.com/app/duor-advanced-door-simulator/id6829698448"><img src="docs/images/app-store-badge.svg" alt="Download on the App Store" height="50"></a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+</p>
+
+A door simulator for the foldable **iPhone Duo**, now open source. The phone is the door:
 
 - **Folded:** the cover display shows the outside of a door. Tap to knock.
 - **Unfold:** the latch clicks and the door creaks open, following the hinge.
 - **Fold:** the door closes with a click, or slams if you're quick about it.
 
 Pick from six doors (oak, cottage, barn, castle, spaceship, metal), five hardware metals, and six living scenes behind the door. See the [solution design](docs/SOLUTION_DESIGN.md).
+
+Duor is [available on the App Store](https://apps.apple.com/app/duor-advanced-door-simulator/id6829698448), made by the [Open Systems Foundation](https://opensf.foundation/products/duor/). The full source, including the sound synthesizer, is open under the Apache 2.0 license.
 
 ## Requirements
 
@@ -70,3 +84,13 @@ afplay build/sounds/door-castle.wav  # the same for each door type (oak, pine, b
 ```
 
 Tune by editing the presets (`oak`, `pine`, `barn`, `castle`, `spaceship`, `steel`) and `MetalTone` values in `Duor/Audio/DSP/SoundProfile.swift`.
+
+## Contributing
+
+Duor is open source and contributions are welcome: bug reports, new doors, better creaks. Open an issue or a pull request. Before sending a PR, run `make lint` and `make test` (and `make test-audio` if you touched `Duor/Audio/DSP`). Notes on the codebase's conventions are in [CLAUDE.md](CLAUDE.md).
+
+## License
+
+Duor is licensed under the [Apache License, Version 2.0](LICENSE). Copyright 2026 Jeff Kroon. See [NOTICE](NOTICE).
+
+The App Store badge is a trademark of Apple Inc., used per Apple's marketing guidelines.
